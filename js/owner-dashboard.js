@@ -1,206 +1,206 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, updateDoc, doc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
 const emptyState = document.getElementById('empty-state');
-const logoutBtn = document.getElementById('logout-btn');
+const filterDateInput = document.getElementById('filter-date');
 const statToday = document.getElementById('stat-today');
-const statPending = document.getElementById('stat-pending');
+const statGuests = document.getElementById('stat-guests');
 const statRevenue = document.getElementById('stat-revenue');
 
-// Filter Elements
-const filterDateInput = document.getElementById('filter-date');
-const btnShowAll = document.getElementById('btn-show-all');
-
-// Modal Elements
-const modal = document.getElementById('verify-modal');
-const modalRef = document.getElementById('modal-ref');
-const btnApprove = document.getElementById('btn-approve');
-const btnReject = document.getElementById('btn-reject');
-const closeModal = document.getElementById('close-modal');
-
 // State
-let currentListener = null; // To hold the unsubscribe function
-let selectedBookingId = null;
+let currentListener = null;
+let revenueChart = null; // Chart instance
 
-// 1. Auth Check
-onAuthStateChanged(auth, (user) => {
+// 1. Auth Check & Init
+onAuthStateChanged(auth, async (user) => {
     if (!user) {
-        window.location.href = 'index.html'; // Protect the page
+        window.location.href = 'index.html';
     } else {
-        // Default: Show Today's bookings
         const today = new Date().toISOString().split('T')[0];
         filterDateInput.value = today;
+        initChart();
         setupRealtimeListener(today);
     }
 });
 
-// 2. Real-Time Listener Setup
-function setupRealtimeListener(dateFilter = null) {
-    // A. Unsubscribe from previous listener if exists
-    if (currentListener) {
-        currentListener(); 
-    }
+// 2. Real-Time Logic (Auto-Filter: CONFIRMED ONLY)
+function setupRealtimeListener(dateFilter) {
+    if (currentListener) currentListener(); // Unsubscribe old
 
-    bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">Loading data...</td></tr>';
+    bookingsList.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-slate-400 animate-pulse">Loading confirmed bookings...</td></tr>';
 
-    // B. Build Query
-    let q;
-    const bookingsRef = collection(db, "bookings");
+    // QUERY: Only show 'confirmed' bookings for the selected date
+    const q = query(
+        collection(db, "bookings"), 
+        where("bookingDate", "==", dateFilter),
+        where("status", "==", "confirmed") 
+    );
 
-    if (dateFilter) {
-        // Filter by specific date
-        q = query(bookingsRef, where("bookingDate", "==", dateFilter));
-    } else {
-        // Show All (Limit to 50 for performance)
-        // Note: orderBy requires an index. If this fails, remove orderBy.
-        q = query(bookingsRef); 
-    }
-
-    // C. Start Listening
     currentListener = onSnapshot(q, (snapshot) => {
-        let rowsHtml = '';
-        let todayCount = 0;
-        let pendingCount = 0;
+        let bookings = [];
+        let totalGuests = 0;
         let revenue = 0;
 
         if (snapshot.empty) {
-            bookingsList.innerHTML = '';
-            emptyState.classList.remove('hidden');
+            renderTable([]);
+            updateStats(0, 0, 0);
             return;
         }
 
-        emptyState.classList.add('hidden');
-
-        // Convert to array to sort client-side (avoids index issues)
-        let bookings = [];
         snapshot.forEach(doc => {
-            bookings.push({ id: doc.id, ...doc.data() });
-        });
-
-        // Client-side Sort: Newest First
-        bookings.sort((a, b) => {
-             const tA = a.createdAt ? a.createdAt.seconds : 0;
-             const tB = b.createdAt ? b.createdAt.seconds : 0;
-             return tB - tA;
-        });
-
-        // Loop and Build HTML
-        bookings.forEach(data => {
-            // Update Stats
-            if (data.status === 'confirmed') revenue += parseFloat(data.totalCost || 0);
-            if (data.status === 'pending_verification' || data.status === 'pending_payment') pendingCount++;
+            const data = doc.data();
+            bookings.push({ id: doc.id, ...data });
             
-            // Just a rough check for "Today" stat regardless of filter
-            const today = new Date().toISOString().split('T')[0];
-            if (data.bookingDate === today) todayCount++;
-
-            // Badge Logic
-            let badgeClass = 'bg-slate-100 text-slate-500';
-            if (data.status === 'confirmed') badgeClass = 'bg-green-100 text-green-700 border-green-200';
-            if (data.status.includes('pending')) badgeClass = 'bg-yellow-100 text-yellow-700 border-yellow-200';
-            if (data.status === 'rejected') badgeClass = 'bg-red-100 text-red-700 border-red-200';
-
-            rowsHtml += `
-                <tr class="hover:bg-slate-50 transition">
-                    <td class="px-6 py-4 font-bold text-slate-800">
-                        Guest
-                    </td>
-                    <td class="px-6 py-4 text-slate-600">
-                        <div class="font-bold">${data.bookingDate}</div>
-                        <div class="text-xs opacity-70">${data.timeSlot}</div>
-                    </td>
-                    <td class="px-6 py-4 text-slate-600">${data.pax}</td>
-                    <td class="px-6 py-4 font-mono text-xs">
-                        <span class="block font-bold">RM ${parseFloat(data.totalCost || 0).toFixed(2)}</span>
-                        <span class="text-teal-600">${data.paymentMethod || 'Manual'}</span>
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="${badgeClass} px-2 py-1 rounded-full text-xs font-bold border capitalize">
-                            ${data.status.replace('_', ' ')}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 text-right">
-                        <button onclick="openVerifyModal('${data.id}', '${data.billCode || data.paymentRef || 'N/A'}')" 
-                            class="text-slate-400 hover:text-slate-900 p-2 rounded-full hover:bg-slate-200 transition">
-                            <i data-lucide="more-horizontal" class="w-5 h-5"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
+            // Stats Calculation
+            if (data.pax) totalGuests += parseInt(data.pax);
+            if (data.totalCost) revenue += parseFloat(data.totalCost);
         });
 
-        bookingsList.innerHTML = rowsHtml;
+        // Sort by Time (Newest First)
+        bookings.sort((a, b) => b.createdAt - a.createdAt);
         
-        // Update Stats UI
-        statToday.innerText = todayCount;
-        statPending.innerText = pendingCount;
-        statRevenue.innerText = `RM ${revenue.toFixed(0)}`;
-        
-        // Refresh icons
-        if(window.lucide) lucide.createIcons();
+        renderTable(bookings);
+        updateStats(bookings.length, totalGuests, revenue);
+        updateChart(bookings); 
+
     }, (error) => {
-        console.error("Snapshot Error:", error);
-        bookingsList.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-500">Error: ${error.message}</td></tr>`;
+        console.error("Error:", error);
+        showToast("Error loading data", "error");
     });
 }
 
-// 3. Filter Event Listeners
-filterDateInput.addEventListener('change', (e) => {
-    setupRealtimeListener(e.target.value);
-});
-
-btnShowAll.addEventListener('click', () => {
-    filterDateInput.value = ''; // Clear picker
-    setupRealtimeListener(null); // Load all
-});
-
-// 4. Modal & Actions Logic
-window.openVerifyModal = (id, ref) => {
-    selectedBookingId = id;
-    modalRef.innerText = ref;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-};
-
-const hideModal = () => {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    selectedBookingId = null;
-};
-
-closeModal.onclick = hideModal;
-btnApprove.onclick = () => updateStatus('confirmed');
-btnReject.onclick = () => updateStatus('rejected');
-
-async function updateStatus(newStatus) {
-    if (!selectedBookingId) return;
+// 3. Render Table (No Verify Button)
+function renderTable(data) {
+    bookingsList.innerHTML = '';
     
-    // UI Feedback
-    const oldText = newStatus === 'confirmed' ? btnApprove.innerText : btnReject.innerText;
-    if(newStatus === 'confirmed') btnApprove.innerText = "..."; 
-    else btnReject.innerText = "...";
-
-    try {
-        const docRef = doc(db, "bookings", selectedBookingId);
-        await updateDoc(docRef, { status: newStatus });
-        
-        // Note: No need to reload! onSnapshot will update the row automatically.
-        hideModal();
-
-    } catch (error) {
-        console.error("Update Error:", error);
-        alert("Failed to update: " + error.message);
-    } finally {
-        // Reset buttons
-        btnApprove.innerText = "Approve";
-        btnReject.innerText = "Reject";
+    if (data.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
     }
+    emptyState.classList.add('hidden');
+
+    data.forEach(item => {
+        const row = document.createElement('tr');
+        row.className = "hover:bg-gray-50 transition border-b border-gray-50 last:border-none group";
+        
+        row.innerHTML = `
+            <td class="px-6 py-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                        ${item.pax}
+                    </div>
+                    <div>
+                        <p class="font-bold text-slate-900">Guest</p>
+                        <p class="text-xs text-slate-400">ID: ...${item.id.slice(-4)}</p>
+                    </div>
+                </div>
+            </td>
+            <td class="px-6 py-4">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <i data-lucide="check-circle" class="w-3 h-3 mr-1"></i>
+                    Paid (ToyyibPay)
+                </span>
+            </td>
+            <td class="px-6 py-4">
+                <p class="text-sm font-medium text-slate-700">${item.timeSlot}</p>
+                <p class="text-xs text-slate-400">${item.bookingDate}</p>
+            </td>
+            <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">
+                RM ${parseFloat(item.totalCost || 0).toFixed(2)}
+            </td>
+            <td class="px-6 py-4 text-right">
+                <span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded select-all">
+                    ${item.billCode || item.paymentRef || 'N/A'}
+                </span>
+            </td>
+        `;
+        bookingsList.appendChild(row);
+    });
+    
+    if(window.lucide) lucide.createIcons();
 }
 
-// 5. Logout
-logoutBtn.addEventListener('click', () => {
+function updateStats(total, guests, revenue) {
+    statToday.innerText = total;
+    statGuests.innerText = guests;
+    statRevenue.innerText = `RM ${revenue.toFixed(2)}`;
+}
+
+// 4. Analytics Chart
+function initChart() {
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(20, 184, 166, 0.2)'); 
+    gradient.addColorStop(1, 'rgba(20, 184, 166, 0)');
+
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['9 AM', '11 AM', '1 PM', '3 PM', '5 PM', '7 PM', '9 PM'],
+            datasets: [{
+                label: 'Revenue (RM)',
+                data: [0, 0, 0, 0, 0, 0, 0],
+                borderColor: '#0d9488', 
+                backgroundColor: gradient,
+                borderWidth: 2,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#0d9488',
+                tension: 0.4, 
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { borderDash: [2, 2] } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+function updateChart(data) {
+    // Basic visualization logic (Simulated for demo)
+    const simulatedData = [10, 30, 45, 20, 60, 80, 40].map(x => x * (data.length > 0 ? 1 : 0));
+    revenueChart.data.datasets[0].data = simulatedData;
+    revenueChart.update();
+}
+
+// 5. Toast System
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    const colors = type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white';
+    const icon = type === 'success' ? 'check-circle' : 'alert-circle';
+
+    toast.className = `${colors} px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-10 opacity-0 transition-all duration-300`;
+    toast.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5"></i><span class="font-bold text-sm">${message}</span>`;
+
+    container.appendChild(toast);
+    lucide.createIcons();
+
+    setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 10);
+    setTimeout(() => {
+        toast.classList.add('translate-y-10', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// 6. Event Listeners
+filterDateInput.addEventListener('change', (e) => setupRealtimeListener(e.target.value));
+
+document.getElementById('btn-refresh').onclick = () => {
+    setupRealtimeListener(filterDateInput.value);
+    showToast("Dashboard Refreshed");
+};
+
+// Logout
+document.getElementById('logout-btn').onclick = () => {
     signOut(auth).then(() => window.location.href = 'index.html');
-});
+};

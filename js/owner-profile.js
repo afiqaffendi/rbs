@@ -1,119 +1,72 @@
 import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Elements
 const form = document.getElementById('profile-form');
-const nameInput = document.getElementById('name');
-const addrInput = document.getElementById('address');
-const hoursInput = document.getElementById('hours');
-const capInput = document.getElementById('capacity');
-const imgInput = document.getElementById('image-url');
-const saveBtn = document.getElementById('save-btn');
-const statusBadge = document.getElementById('save-status');
+let currentDocId = null;
+let userUid = null;
 
-let currentOwnerId = null;
-let currentRestaurantId = null; // To know if we update or create
-
-// 1. Init Icons
-document.addEventListener('DOMContentLoaded', () => {
-    if(window.lucide) lucide.createIcons();
-});
-
-// 2. Auth Check & Load Data
+// 1. Auth Check
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = 'index.html';
     } else {
-        currentOwnerId = user.uid;
-        await loadRestaurantData();
+        userUid = user.uid;
+        loadProfile();
     }
 });
 
-// 3. Load Existing Profile
-async function loadRestaurantData() {
-    saveBtn.innerText = "Loading...";
-    saveBtn.disabled = true;
+// 2. Load Existing Data
+async function loadProfile() {
+    // Find restaurant owned by this user
+    const q = query(collection(db, "restaurants"), where("ownerId", "==", userUid));
+    const querySnapshot = await getDocs(q);
 
-    try {
-        // Find restaurant where ownerId == currentUid
-        const q = query(collection(db, "restaurants"), where("ownerId", "==", currentOwnerId));
-        const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        currentDocId = docSnap.id;
+        const data = docSnap.data();
 
-        if (!querySnapshot.empty) {
-            // Restaurant Exists -> Populate Form
-            const docSnap = querySnapshot.docs[0];
-            currentRestaurantId = docSnap.id;
-            const data = docSnap.data();
-
-            nameInput.value = data.name || '';
-            addrInput.value = data.address || '';
-            hoursInput.value = data.operatingHours || '';
-            capInput.value = data.capacity || '';
-            imgInput.value = data.imageUrl || '';
-            
-            console.log("Loaded Restaurant:", data.name);
-        } else {
-            console.log("No restaurant found. Ready to create new.");
-        }
-    } catch (error) {
-        console.error("Error loading profile:", error);
-    } finally {
-        saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save Changes`;
-        saveBtn.disabled = false;
-        if(window.lucide) lucide.createIcons();
+        document.getElementById('res-name').value = data.name;
+        document.getElementById('res-address').value = data.address;
+        document.getElementById('res-hours').value = data.operatingHours;
+        document.getElementById('res-capacity').value = data.capacity;
+        document.getElementById('res-image').value = data.imageUrl || '';
     }
 }
 
-// 4. Handle Save (Create or Update)
+// 3. Save Data
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = document.getElementById('save-btn');
+    const originalText = btn.innerText;
     
-    saveBtn.innerText = "Saving...";
-    saveBtn.disabled = true;
+    btn.innerText = "Saving...";
+    btn.disabled = true;
 
-    const restaurantData = {
-        ownerId: currentOwnerId, // IMPORTANT LINK
-        name: nameInput.value.trim(),
-        address: addrInput.value.trim(),
-        operatingHours: hoursInput.value.trim(),
-        capacity: parseInt(capInput.value),
-        imageUrl: imgInput.value.trim()
+    const data = {
+        ownerId: userUid,
+        name: document.getElementById('res-name').value,
+        address: document.getElementById('res-address').value,
+        operatingHours: document.getElementById('res-hours').value,
+        capacity: parseInt(document.getElementById('res-capacity').value),
+        imageUrl: document.getElementById('res-image').value
     };
 
     try {
-        if (currentRestaurantId) {
-            // Update Existing
-            const ref = doc(db, "restaurants", currentRestaurantId);
-            await updateDoc(ref, restaurantData);
-            showStatus("Updated Successfully!");
+        if (currentDocId) {
+            // Update
+            await updateDoc(doc(db, "restaurants", currentDocId), data);
         } else {
             // Create New
-            const docRef = await addDoc(collection(db, "restaurants"), restaurantData);
-            currentRestaurantId = docRef.id;
-            showStatus("Created Successfully!");
+            await addDoc(collection(db, "restaurants"), data);
         }
+        alert("Profile Saved Successfully!");
+        window.location.href = 'owner-dashboard.html';
     } catch (error) {
-        console.error("Error saving:", error);
-        alert("Failed to save: " + error.message);
-    } finally {
-        saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Save Changes`;
-        saveBtn.disabled = false;
-        if(window.lucide) lucide.createIcons();
+        console.error("Error:", error);
+        alert("Save Failed: " + error.message);
+        btn.innerText = originalText;
+        btn.disabled = false;
     }
-});
-
-// Helper: Show success message
-function showStatus(msg) {
-    statusBadge.innerText = msg;
-    statusBadge.classList.remove('hidden');
-    setTimeout(() => {
-        statusBadge.classList.add('hidden');
-    }, 3000);
-}
-
-// Logout
-document.getElementById('logout-btn').addEventListener('click', async () => {
-    await signOut(auth);
-    window.location.href = 'index.html';
 });
