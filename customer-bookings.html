@@ -21,8 +21,12 @@
         </div>
 
         <div class="px-6 py-3 flex gap-2 bg-white">
-            <button class="flex-1 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg shadow-md">Upcoming</button>
-            <button class="flex-1 py-2 bg-slate-50 text-slate-500 text-xs font-bold rounded-lg border border-slate-100">History</button>
+            <button id="btn-upcoming" class="flex-1 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg shadow-md transition-all">
+                Upcoming
+            </button>
+            <button id="btn-history" class="flex-1 py-2 bg-slate-50 text-slate-500 text-xs font-bold rounded-lg border border-slate-100 transition-all">
+                History
+            </button>
         </div>
 
         <div id="bookings-list" class="flex-1 overflow-y-auto px-6 pt-4 pb-24 space-y-4 no-scrollbar bg-slate-50">
@@ -50,5 +54,9 @@
     </div>
 
     <script type="module" src="js/customer-bookings.js"></script>
+    <script>
+        // Initialize icons immediately
+        lucide.createIcons();
+    </script>
 </body>
 </html>

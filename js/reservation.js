@@ -77,7 +77,6 @@ dateInput.addEventListener('change', (e) => {
 
 function generateTimeSlots(operatingHours) {
     // Basic parser: "09:00 AM - 10:00 PM"
-    // In production, use a library like date-fns for robustness
     const parseTime = (t) => {
         const [time, modifier] = t.split(' ');
         let [hours, minutes] = time.split(':').map(Number);
@@ -104,7 +103,7 @@ function generateTimeSlots(operatingHours) {
     // 2-hour intervals
     while (startMin + 120 <= endMin) {
         slots.push(formatTime(startMin));
-        startMin += 60; // Show slots every hour (e.g., 9am, 10am, 11am)
+        startMin += 60; // Show slots every hour
     }
     return slots;
 }
@@ -120,7 +119,6 @@ function renderTimeSlots() {
 
     slots.forEach(time => {
         const btn = document.createElement('button');
-        // Tailwind Styling for Time Chips
         btn.className = `
             py-3 px-2 rounded-xl text-sm font-bold border transition-all
             ${selectedTime === time 
@@ -130,7 +128,7 @@ function renderTimeSlots() {
         btn.innerText = time;
         btn.onclick = () => {
             selectedTime = time;
-            renderTimeSlots(); // Re-render to highlight selection
+            renderTimeSlots();
             checkAvailability(time);
         };
         slotsContainer.appendChild(btn);
@@ -156,7 +154,7 @@ async function checkAvailability(timeSlot) {
         let occupiedPax = 0;
         snapshot.forEach(doc => occupiedPax += doc.data().pax);
 
-        if ((occupiedPax + pax) <= currentRestaurant.capacity) {
+        if ((occupiedPax + pax) <= (currentRestaurant.capacity || 50)) {
             bookBtn.disabled = false;
             bookBtn.innerText = "Confirm Reservation";
         } else {
@@ -179,6 +177,7 @@ function updateSummary() {
     }
 }
 
+// FIX: Ensure totalCost and menuItems are always saved
 window.handleBooking = () => {
     const bookingData = {
         restaurantId: restaurantId,
@@ -186,10 +185,11 @@ window.handleBooking = () => {
         date: selectedDate,
         timeSlot: selectedTime,
         pax: pax,
-        deposit: 50.00 // Example fixed deposit
+        deposit: 50.00,
+        totalCost: 50.00, // <--- Added this
+        menuItems: []     // <--- Added this
     };
     
     sessionStorage.setItem('tempBooking', JSON.stringify(bookingData));
-    // Redirect to your payment page (which you need to create/style next)
     window.location.href = 'payment.html'; 
 };
