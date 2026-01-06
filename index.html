@@ -1,29 +1,84 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>DTEBS - Login</title>
-    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
 </head>
-<body>
+<body class="bg-slate-100 font-sans text-slate-800 flex justify-center items-center min-h-screen p-0 md:p-4">
 
-    <div class="login-container">
-        <h1>Welcome to DTEBS</h1>
-        <p>Please log in to continue</p>
-        
-        <form id="login-form">
-            <input type="email" id="email" placeholder="Email Address" required>
-            <input type="password" id="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
+    <div class="w-full h-screen md:w-[375px] md:h-[812px] bg-white md:rounded-[2.5rem] overflow-hidden md:border-[8px] md:border-slate-900 relative shadow-2xl flex flex-col ring-1 ring-black/5">
 
-        <p id="error-msg"></p>
+        <div class="h-64 bg-slate-900 relative flex items-center justify-center overflow-hidden shrink-0">
+            <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#4fd1c5 1px, transparent 1px); background-size: 20px 20px;"></div>
+            
+            <div class="relative z-10 text-center p-6">
+                <div class="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-xl">
+                    <i data-lucide="utensils-crossed" class="w-10 h-10 text-teal-400"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-white tracking-tight">DTEBS</h1>
+                <p class="text-slate-400 text-sm mt-1 font-medium">Smart Dining Experience</p>
+            </div>
+        </div>
+
+        <div class="flex-1 -mt-8 bg-white rounded-t-[2rem] relative z-20 px-8 pt-10 pb-6 flex flex-col overflow-y-auto no-scrollbar">
+            
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-slate-900">Welcome Back</h2>
+                <p class="text-slate-500 text-sm mt-1">Please sign in to continue</p>
+            </div>
+
+            <form id="login-form" class="space-y-5 flex-1">
+                
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Email</label>
+                    <div class="relative">
+                        <i data-lucide="mail" class="absolute left-4 top-3.5 w-5 h-5 text-slate-400"></i>
+                        <input type="email" id="email" placeholder="hello@example.com" required 
+                            class="w-full bg-slate-50 border border-slate-100 rounded-xl py-3.5 pl-12 pr-4 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:font-normal">
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center ml-1">
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Password</label>
+                        <a href="#" class="text-xs font-bold text-teal-600 hover:text-teal-700">Forgot?</a>
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="lock" class="absolute left-4 top-3.5 w-5 h-5 text-slate-400"></i>
+                        <input type="password" id="password" placeholder="••••••••" required 
+                            class="w-full bg-slate-50 border border-slate-100 rounded-xl py-3.5 pl-12 pr-4 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:font-normal">
+                    </div>
+                </div>
+
+                <p id="error-msg" class="text-xs font-bold text-red-500 text-center min-h-[20px]"></p>
+
+                <button type="submit" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-200 active:scale-95 hover:bg-black transition-all flex justify-center items-center gap-2 mt-4">
+                    Login <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+
+            </form>
+
+            <div class="mt-auto pt-6 text-center border-t border-slate-100">
+                <p class="text-sm font-medium text-slate-500">
+                    Don't have an account? 
+                    <a href="signup.html" class="text-teal-600 font-bold hover:underline transition">Create Account</a>
+                </p>
+            </div>
+        </div>
+
     </div>
 
     <script type="module" src="js/auth.js"></script>
-
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+    </script>
 </body>
 </html>
-
