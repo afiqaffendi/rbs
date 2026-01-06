@@ -41,3 +41,127 @@ button {
 button:hover {
     background-color: #218838;
 }
+/* --- Dashboard Styles --- */
+
+/* Navbar */
+.navbar {
+    background-color: #333;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-links button {
+    background-color: #d9534f; /* Red for logout */
+    width: auto;
+    padding: 5px 15px;
+    font-size: 0.9rem;
+    margin-left: 15px;
+}
+
+.nav-links a {
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+/* Page Layout */
+.container {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 1rem;
+}
+
+/* Restaurant Grid (Responsive) */
+.restaurant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); /* Auto columns */
+    gap: 20px;
+}
+
+/* Cards */
+.restaurant-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.restaurant-card:hover {
+    transform: translateY(-5px);
+}
+
+.restaurant-card h3 {
+    margin-top: 0;
+    color: #2c3e50;
+}
+
+.restaurant-card p {
+    color: #666;
+    margin: 5px 0;
+}
+
+.restaurant-card button {
+    margin-top: 10px;
+    background-color: #007bff; /* Blue for action */
+}
+/* --- Booking Form Styles --- */
+.booking-layout {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap; /* Wraps on mobile */
+}
+
+.form-section, .menu-section {
+    flex: 1;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    min-width: 300px;
+}
+
+label {
+    display: block;
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+/* Menu Grid */
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.menu-item input {
+    width: auto;
+    margin-right: 10px;
+}
+
+.summary-box {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 2px solid #333;
+}
+
+#proceed-btn {
+    background-color: #28a745;
+    margin-top: 10px;
+    width: 100%;
+}
+
+#proceed-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
