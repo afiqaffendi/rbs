@@ -22,6 +22,8 @@ onAuthStateChanged(auth, (user) => {
         window.location.href = 'index.html';
     } else {
         userUid = user.uid;
+        // Check if this is a RETURN from Payment first
+        checkReturnFromPayment();
         loadBookingData();
     }
 });
@@ -29,39 +31,31 @@ onAuthStateChanged(auth, (user) => {
 function loadBookingData() {
     const dataStr = sessionStorage.getItem('tempBooking');
     if (!dataStr) {
-        alert("No booking found. Redirecting to home.");
-        window.location.href = 'customer-home.html';
-        return;
+        // If we just finished payment, we might have cleared this, so ignore
+        return; 
     }
     bookingData = JSON.parse(dataStr);
 
-    // FIX: Fallback logic for Price and Menu
     const displayPrice = bookingData.totalCost || bookingData.deposit || 0;
     const items = bookingData.menuItems || [];
 
-    // Display Data
-    let itemsHtml = '';
-    if(items.length > 0) {
-        itemsHtml = items.map(item => 
-            `<p class="flex justify-between"><span>${item.qty}x ${item.name}</span> <span>RM ${(item.price * item.qty).toFixed(2)}</span></p>`
-        ).join('');
-    } else {
-        itemsHtml = '<p>Table Reservation Only</p>';
-    }
+    let itemsHtml = items.length > 0 
+        ? items.map(item => `<p class="flex justify-between"><span>${item.qty}x ${item.name}</span> <span>RM ${(item.price * item.qty).toFixed(2)}</span></p>`).join('')
+        : '<p>Table Reservation Only</p>';
 
-    detailsDiv.innerHTML = `
-        <p><strong>Restaurant:</strong> ${bookingData.restaurantName}</p>
-        <p><strong>Date:</strong> ${bookingData.date} @ ${bookingData.timeSlot}</p>
-        <div class="pl-2 border-l-2 border-slate-200 my-2 text-xs">
-            ${itemsHtml}
-        </div>
-    `;
-    totalDisplay.innerText = `RM ${parseFloat(displayPrice).toFixed(2)}`;
+    if(detailsDiv) {
+        detailsDiv.innerHTML = `
+            <p><strong>Restaurant:</strong> ${bookingData.restaurantName}</p>
+            <p><strong>Date:</strong> ${bookingData.date} @ ${bookingData.timeSlot}</p>
+            <div class="pl-2 border-l-2 border-slate-200 my-2 text-xs">${itemsHtml}</div>
+        `;
+    }
+    if(totalDisplay) {
+        totalDisplay.innerText = `RM ${parseFloat(displayPrice).toFixed(2)}`;
+    }
 }
 
-// ==========================================
-// TOYYIBPAY (Online Banking) LOGIC
-// ==========================================
+// 2. Handle Payment Button Click
 if(fpxBtn) {
     fpxBtn.addEventListener('click', async () => {
         if (!bookingData) return;
@@ -70,20 +64,16 @@ if(fpxBtn) {
         fpxBtn.innerHTML = "Connecting...";
         fpxBtn.disabled = true;
 
-        // 1. CALCULATE AMOUNT
-        // Priority: totalCost > deposit > 0
-        let rawPrice = bookingData.totalCost || bookingData.deposit || 0;
-        let amountInCents = Math.round(parseFloat(rawPrice) * 100); 
+        const rawPrice = bookingData.totalCost || bookingData.deposit || 0;
+        const amountInCents = Math.round(parseFloat(rawPrice) * 100); 
 
-        // SAFETY CHECK: ToyyibPay requires minimum RM 1.00 (100 cents)
         if (amountInCents < 100) {
-            alert(`Error: The payment amount (RM ${rawPrice}) is too low. ToyyibPay requires at least RM 1.00.`);
+            alert(`Error: Amount RM ${rawPrice} is too low. Minimum RM 1.00.`);
             fpxBtn.innerHTML = originalText;
             fpxBtn.disabled = false;
             return;
         }
 
-        // 2. Prepare Data (URLSearchParams for Proxy compatibility)
         const params = new URLSearchParams();
         params.append('userSecretKey', TOYYIB_SECRET_KEY);
         params.append('categoryCode', TOYYIB_CATEGORY_CODE);
@@ -100,36 +90,23 @@ if(fpxBtn) {
         params.append('billPhone', '0123456789');
 
         try {
-            // 3. Send to ToyyibPay DEV via Proxy
             const proxyUrl = 'https://corsproxy.io/?'; 
             const targetUrl = 'https://dev.toyyibpay.com/index.php/api/createBill';
 
             const response = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: params
             });
 
             const data = await response.json();
 
-            // 4. Redirect User
             if (data && data[0] && data[0].BillCode) {
                 const billCode = data[0].BillCode;
                 sessionStorage.setItem('pending_bill_code', billCode);
-                
-                // Redirect to DEV Payment Page
                 window.location.href = `https://dev.toyyibpay.com/${billCode}`;
             } else {
-                console.error("API Error:", data);
-                
-                let errorMsg = "Unknown Error";
-                if(data[0] && data[0].msg) errorMsg = data[0].msg;
-                else if (typeof data === 'string') errorMsg = data;
-                else errorMsg = JSON.stringify(data);
-
-                alert("ToyyibPay Error: " + errorMsg);
+                alert("ToyyibPay Error: " + JSON.stringify(data));
                 fpxBtn.innerHTML = originalText;
                 fpxBtn.disabled = false;
             }
@@ -143,58 +120,56 @@ if(fpxBtn) {
     });
 }
 
-// ==========================================
-// HELPER: SAVE TO FIREBASE
-// ==========================================
-async function saveBookingToFirestore(method, refOrUrl, status) {
-    if(loadingOverlay) loadingOverlay.classList.remove('hidden');
-
-    try {
-        const finalCost = parseFloat(bookingData.totalCost || bookingData.deposit || 0);
-
-        await addDoc(collection(db, "bookings"), {
-            restaurantId: bookingData.restaurantId,
-            restaurantName: bookingData.restaurantName,
-            customerId: userUid,
-            bookingDate: bookingData.date,
-            timeSlot: bookingData.timeSlot,
-            pax: parseInt(bookingData.pax),
-            menuItems: bookingData.menuItems || [],
-            totalCost: finalCost,
-            paymentMethod: method, // 'toyyibpay'
-            paymentRef: refOrUrl, // BillCode
-            status: status, 
-            createdAt: Timestamp.now()
-        });
-
-        sessionStorage.removeItem('tempBooking');
-        sessionStorage.removeItem('pending_bill_code');
-        
-        setTimeout(() => {
-            alert("Payment Successful! Booking Confirmed.");
-            window.location.href = 'customer-bookings.html';
-        }, 1000);
-
-    } catch (error) {
-        console.error("Save Error:", error);
-        alert("Payment done, but failed to save booking. Screenshot this!");
-        if(loadingOverlay) loadingOverlay.classList.add('hidden');
-    }
-}
-
-// ==========================================
-// HANDLE RETURN FROM TOYYIBPAY
-// ==========================================
-window.addEventListener('DOMContentLoaded', () => {
+// 3. Handle Return from Payment (The Important Part)
+async function checkReturnFromPayment() {
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get('status');
-    const billCode = urlParams.get('billcode'); 
+    const statusId = urlParams.get('status_id');
+    const billCode = urlParams.get('billcode');
 
-    if (status === 'success' || urlParams.get('status_id') == 1) {
-        if(sessionStorage.getItem('tempBooking')) {
-            bookingData = JSON.parse(sessionStorage.getItem('tempBooking'));
-            const savedBillCode = sessionStorage.getItem('pending_bill_code') || billCode || 'online';
-            saveBookingToFirestore("toyyibpay", savedBillCode, "confirmed");
+    // Check if URL indicates success
+    if (status === 'success' || statusId == 1) {
+        
+        const dataStr = sessionStorage.getItem('tempBooking');
+        if(!dataStr) {
+            console.log("No temp booking data found (already saved or lost).");
+            return;
+        }
+
+        const savedData = JSON.parse(dataStr);
+        const savedBillCode = sessionStorage.getItem('pending_bill_code') || billCode || 'online';
+
+        // Show Loading
+        if(loadingOverlay) loadingOverlay.classList.remove('hidden');
+        
+        try {
+            // FORCE SAVE
+            await addDoc(collection(db, "bookings"), {
+                restaurantId: savedData.restaurantId,
+                restaurantName: savedData.restaurantName,
+                customerId: userUid,
+                bookingDate: savedData.date,
+                timeSlot: savedData.timeSlot,
+                pax: parseInt(savedData.pax),
+                menuItems: savedData.menuItems || [],
+                totalCost: parseFloat(savedData.totalCost || savedData.deposit || 0),
+                paymentMethod: 'toyyibpay',
+                paymentRef: savedBillCode,
+                status: 'confirmed',
+                createdAt: Timestamp.now()
+            });
+
+            // Cleanup
+            sessionStorage.removeItem('tempBooking');
+            sessionStorage.removeItem('pending_bill_code');
+
+            alert("Payment Success! Booking Confirmed.");
+            window.location.href = 'customer-bookings.html';
+
+        } catch (error) {
+            console.error("Save Error:", error);
+            alert("Payment Success, but Save Failed: " + error.message);
+            if(loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }
-});
+}

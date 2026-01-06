@@ -1,6 +1,6 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
@@ -20,7 +20,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// 2. Fetch & Process Bookings
+// 2. Fetch & Process Bookings (FIXED: Removed orderBy)
 async function loadUserBookings(uid) {
     // Show Loading Skeleton
     bookingsList.innerHTML = `
@@ -30,19 +30,26 @@ async function loadUserBookings(uid) {
         </div>`;
 
     try {
-        // Fetch all bookings for this user, newest first
+        // FIX: Removed 'orderBy' to prevent Index Errors
         const q = query(
             collection(db, "bookings"),
-            where("customerId", "==", uid),
-            orderBy("createdAt", "desc") 
+            where("customerId", "==", uid)
         );
 
         const querySnapshot = await getDocs(q);
         
-        // Save to memory so we don't have to fetch again when switching tabs
         allBookings = [];
         querySnapshot.forEach((doc) => {
+            // Add ID and Data to array
             allBookings.push({ id: doc.id, ...doc.data() });
+        });
+
+        // FIX: Sort using JavaScript instead (Newest First)
+        allBookings.sort((a, b) => {
+            // Sort by Created At (if exists) or Booking Date
+            const timeA = a.createdAt ? a.createdAt.seconds : 0;
+            const timeB = b.createdAt ? b.createdAt.seconds : 0;
+            return timeB - timeA;
         });
 
         // Initial Render
@@ -50,26 +57,15 @@ async function loadUserBookings(uid) {
 
     } catch (error) {
         console.error("Error loading bookings:", error);
-        
-        // Fallback: If 'orderBy' fails due to missing index, try without it
-        if(error.message.includes("index")) {
-            console.warn("Index missing, retrying without sort...");
-            const q = query(collection(db, "bookings"), where("customerId", "==", uid));
-            const snap = await getDocs(q);
-            allBookings = [];
-            snap.forEach(d => allBookings.push({ id: d.id, ...d.data() }));
-            renderBookings();
-        } else {
-            bookingsList.innerHTML = '<p class="text-red-500 text-center font-bold text-xs mt-10">Error loading data.</p>';
-        }
+        bookingsList.innerHTML = `<p class="text-red-500 text-center font-bold text-xs mt-10">Error: ${error.message}</p>`;
     }
 }
 
-// 3. Render Logic (The Brains)
+// 3. Render Logic
 function renderBookings() {
     bookingsList.innerHTML = '';
 
-    const today = new Date().toISOString().split('T')[0]; // "2024-03-20"
+    const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
 
     // Filter Logic
     const filtered = allBookings.filter(b => {
@@ -87,7 +83,7 @@ function renderBookings() {
         bookingsList.innerHTML = `
             <div class="flex flex-col items-center justify-center h-64 text-slate-400">
                 <i data-lucide="${currentView === 'upcoming' ? 'calendar' : 'history'}" class="w-12 h-12 mb-3 opacity-50"></i>
-                <p class="text-sm font-bold">No ${currentView} bookings.</p>
+                <p class="text-sm font-bold">No ${currentView} bookings found.</p>
                 ${currentView === 'upcoming' ? '<a href="customer-home.html" class="mt-4 text-teal-600 text-xs font-bold bg-teal-50 px-4 py-2 rounded-lg">Make a reservation</a>' : ''}
             </div>`;
         if(window.lucide) lucide.createIcons();
@@ -162,19 +158,15 @@ function updateTabs(view) {
     const inactiveClass = ['bg-slate-50', 'text-slate-500', 'border', 'border-slate-100'];
 
     if (view === 'upcoming') {
-        // Activate Upcoming
         btnUpcoming.classList.add(...activeClass);
         btnUpcoming.classList.remove(...inactiveClass);
         
-        // Deactivate History
         btnHistory.classList.add(...inactiveClass);
         btnHistory.classList.remove(...activeClass);
     } else {
-        // Activate History
         btnHistory.classList.add(...activeClass);
         btnHistory.classList.remove(...inactiveClass);
         
-        // Deactivate Upcoming
         btnUpcoming.classList.add(...inactiveClass);
         btnUpcoming.classList.remove(...activeClass);
     }
