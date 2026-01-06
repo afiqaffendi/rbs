@@ -1,14 +1,15 @@
 import { auth, db } from './firebase-config.js'; 
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// --- TOYYIBPAY CONFIGURATION (DEV MODE) ---
+// --- TOYYIBPAY CONFIGURATION ---
 const TOYYIB_SECRET_KEY = 'ssld1e1h-s9kj-nq2u-saau-a6v0xlt33sk1'; 
 const TOYYIB_CATEGORY_CODE = 'i6g190ld'; 
 
 // --- VARIABLES ---
 let bookingData = null;
-let userUid = null;
+// NEW: Get ID from URL (sent by reservation.js)
+let bookingId = new URLSearchParams(window.location.search).get('id');
 
 // DOM Elements
 const detailsDiv = document.getElementById('booking-details');
@@ -16,42 +17,73 @@ const totalDisplay = document.getElementById('display-total');
 const fpxBtn = document.getElementById('pay-fpx-btn');
 const loadingOverlay = document.getElementById('loading-overlay');
 
-// 1. Check Login & Load Data
+// 1. Check Login & Data
 onAuthStateChanged(auth, (user) => {
     if (!user) {
         window.location.href = 'index.html';
     } else {
-        userUid = user.uid;
-        // Check if this is a RETURN from Payment first
-        checkReturnFromPayment();
-        loadBookingData();
+        if(bookingId) {
+            // Check if this is a return from Payment or a new load
+            checkReturnFromPayment();
+            loadBookingFromFirestore(bookingId);
+        } else {
+            // Fallback for old flow or manual navigation
+            alert("No Booking ID found. Please make a reservation first.");
+            window.location.href = 'customer-home.html';
+        }
     }
 });
 
-function loadBookingData() {
-    const dataStr = sessionStorage.getItem('tempBooking');
-    if (!dataStr) {
-        // If we just finished payment, we might have cleared this, so ignore
-        return; 
-    }
-    bookingData = JSON.parse(dataStr);
+// === NEW: Load from Firestore (Robutness Fix) ===
+async function loadBookingFromFirestore(id) {
+    try {
+        const docRef = doc(db, "bookings", id);
+        const docSnap = await getDoc(docRef);
 
+        if (docSnap.exists()) {
+            bookingData = docSnap.data();
+            renderBookingUI();
+        } else {
+            console.error("No such document!");
+            detailsDiv.innerHTML = '<p class="text-red-500">Booking not found.</p>';
+        }
+    } catch (error) {
+        console.error("Error loading booking:", error);
+        detailsDiv.innerHTML = '<p class="text-red-500">Error loading booking details.</p>';
+    }
+}
+
+function renderBookingUI() {
     const displayPrice = bookingData.totalCost || bookingData.deposit || 0;
     const items = bookingData.menuItems || [];
 
     let itemsHtml = items.length > 0 
         ? items.map(item => `<p class="flex justify-between"><span>${item.qty}x ${item.name}</span> <span>RM ${(item.price * item.qty).toFixed(2)}</span></p>`).join('')
-        : '<p>Table Reservation Only</p>';
+        : '<p class="text-slate-400 italic">Table Reservation Only</p>';
 
     if(detailsDiv) {
         detailsDiv.innerHTML = `
             <p><strong>Restaurant:</strong> ${bookingData.restaurantName}</p>
-            <p><strong>Date:</strong> ${bookingData.date} @ ${bookingData.timeSlot}</p>
-            <div class="pl-2 border-l-2 border-slate-200 my-2 text-xs">${itemsHtml}</div>
+            <p><strong>Date:</strong> ${bookingData.bookingDate} @ ${bookingData.timeSlot}</p>
+            <p><strong>Guests:</strong> ${bookingData.pax} Pax</p>
+            <div class="mt-4 pt-4 border-t border-slate-100">
+                <p class="font-bold text-xs uppercase text-slate-400 mb-2">Order Summary</p>
+                <div class="space-y-1 text-sm">${itemsHtml}</div>
+            </div>
         `;
     }
     if(totalDisplay) {
         totalDisplay.innerText = `RM ${parseFloat(displayPrice).toFixed(2)}`;
+    }
+    
+    // UX: Disable button if already paid
+    if(bookingData.status === 'confirmed') {
+        if(fpxBtn) {
+            fpxBtn.disabled = true;
+            fpxBtn.innerText = "PAID & CONFIRMED";
+            fpxBtn.classList.remove('bg-slate-900');
+            fpxBtn.classList.add('bg-green-600');
+        }
     }
 }
 
@@ -74,17 +106,21 @@ if(fpxBtn) {
             return;
         }
 
+        // === CRITICAL: URL construction ===
+        // We pass the Booking ID back in the return URL so we don't lose it
+        const returnUrl = `${window.location.origin}${window.location.pathname}?id=${bookingId}&status=success`;
+
         const params = new URLSearchParams();
         params.append('userSecretKey', TOYYIB_SECRET_KEY);
         params.append('categoryCode', TOYYIB_CATEGORY_CODE);
         params.append('billName', `DTEBS: ${bookingData.restaurantName}`);
-        params.append('billDescription', `Booking: ${bookingData.date}, ${bookingData.timeSlot}`);
+        params.append('billDescription', `Booking ID: ${bookingId}`);
         params.append('billPriceSetting', 1);
         params.append('billPayorInfo', 1);
         params.append('billAmount', amountInCents);
-        params.append('billReturnUrl', window.location.href.split('?')[0] + '?status=success'); 
+        params.append('billReturnUrl', returnUrl); 
         params.append('billCallbackUrl', 'https://reqres.in/api/users'); 
-        params.append('billExternalReferenceNo', Date.now().toString());
+        params.append('billExternalReferenceNo', bookingId); 
         params.append('billTo', 'Customer');
         params.append('billEmail', 'customer@email.com');
         params.append('billPhone', '0123456789');
@@ -103,7 +139,12 @@ if(fpxBtn) {
 
             if (data && data[0] && data[0].BillCode) {
                 const billCode = data[0].BillCode;
-                sessionStorage.setItem('pending_bill_code', billCode);
+                
+                // Update Firestore with BillCode before redirecting (Safety)
+                await updateDoc(doc(db, "bookings", bookingId), { 
+                    billCode: billCode 
+                });
+
                 window.location.href = `https://dev.toyyibpay.com/${billCode}`;
             } else {
                 alert("ToyyibPay Error: " + JSON.stringify(data));
@@ -120,55 +161,33 @@ if(fpxBtn) {
     });
 }
 
-// 3. Handle Return from Payment (The Important Part)
+// 3. Handle Return from Payment
 async function checkReturnFromPayment() {
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get('status');
-    const statusId = urlParams.get('status_id');
     const billCode = urlParams.get('billcode');
 
-    // Check if URL indicates success
-    if (status === 'success' || statusId == 1) {
+    // If 'status=success' AND we have a Booking ID
+    if (status === 'success' && bookingId) {
         
-        const dataStr = sessionStorage.getItem('tempBooking');
-        if(!dataStr) {
-            console.log("No temp booking data found (already saved or lost).");
-            return;
-        }
-
-        const savedData = JSON.parse(dataStr);
-        const savedBillCode = sessionStorage.getItem('pending_bill_code') || billCode || 'online';
-
-        // Show Loading
         if(loadingOverlay) loadingOverlay.classList.remove('hidden');
         
         try {
-            // FORCE SAVE
-            await addDoc(collection(db, "bookings"), {
-                restaurantId: savedData.restaurantId,
-                restaurantName: savedData.restaurantName,
-                customerId: userUid,
-                bookingDate: savedData.date,
-                timeSlot: savedData.timeSlot,
-                pax: parseInt(savedData.pax),
-                menuItems: savedData.menuItems || [],
-                totalCost: parseFloat(savedData.totalCost || savedData.deposit || 0),
-                paymentMethod: 'toyyibpay',
-                paymentRef: savedBillCode,
+            const docRef = doc(db, "bookings", bookingId);
+            
+            // Confirm the booking in Firestore
+            await updateDoc(docRef, {
                 status: 'confirmed',
-                createdAt: Timestamp.now()
+                paymentMethod: 'toyyibpay',
+                billCode: billCode || 'unknown'
             });
-
-            // Cleanup
-            sessionStorage.removeItem('tempBooking');
-            sessionStorage.removeItem('pending_bill_code');
 
             alert("Payment Success! Booking Confirmed.");
             window.location.href = 'customer-bookings.html';
 
         } catch (error) {
-            console.error("Save Error:", error);
-            alert("Payment Success, but Save Failed: " + error.message);
+            console.error("Confirmation Error:", error);
+            alert("Payment marked successful, but failed to update status: " + error.message);
             if(loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }

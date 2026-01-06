@@ -1,173 +1,206 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, onSnapshot, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, updateDoc, doc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
-const pendingList = document.getElementById('pending-list');
-const confirmedList = document.getElementById('confirmed-list');
-const countPending = document.getElementById('count-pending');
-const countConfirmed = document.getElementById('count-confirmed');
+const bookingsList = document.getElementById('bookings-list');
+const emptyState = document.getElementById('empty-state');
 const logoutBtn = document.getElementById('logout-btn');
+const statToday = document.getElementById('stat-today');
+const statPending = document.getElementById('stat-pending');
+const statRevenue = document.getElementById('stat-revenue');
 
-// Modal Elements (UPDATED for Text Reference)
-const modal = document.getElementById('verification-modal');
-const modalRefDisplay = document.getElementById('modal-ref-display'); // Changed from modalReceipt
-const modalCustomer = document.getElementById('modal-customer');
-const modalTotal = document.getElementById('modal-total');
+// Filter Elements
+const filterDateInput = document.getElementById('filter-date');
+const btnShowAll = document.getElementById('btn-show-all');
+
+// Modal Elements
+const modal = document.getElementById('verify-modal');
+const modalRef = document.getElementById('modal-ref');
 const btnApprove = document.getElementById('btn-approve');
 const btnReject = document.getElementById('btn-reject');
+const closeModal = document.getElementById('close-modal');
 
-let currentOwnerId = null;
-let currentBookingId = null; // Track which booking is open in modal
+// State
+let currentListener = null; // To hold the unsubscribe function
+let selectedBookingId = null;
 
-// 1. Initialization
-document.addEventListener('DOMContentLoaded', () => {
-    if(window.lucide) lucide.createIcons();
-});
-
-// 2. Auth Check
-onAuthStateChanged(auth, async (user) => {
+// 1. Auth Check
+onAuthStateChanged(auth, (user) => {
     if (!user) {
-        window.location.href = 'index.html';
+        window.location.href = 'index.html'; // Protect the page
     } else {
-        // Verify this is actually an Owner
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists() && userDoc.data().role === 'Restaurant Owner') {
-            currentOwnerId = user.uid;
-            loadBookings(); 
-        } else {
-            alert("Access Denied: You are not a Restaurant Owner.");
-            window.location.href = 'customer-home.html';
-        }
+        // Default: Show Today's bookings
+        const today = new Date().toISOString().split('T')[0];
+        filterDateInput.value = today;
+        setupRealtimeListener(today);
     }
 });
 
-logoutBtn.addEventListener('click', async () => {
-    await signOut(auth);
-    window.location.href = 'index.html';
-});
+// 2. Real-Time Listener Setup
+function setupRealtimeListener(dateFilter = null) {
+    // A. Unsubscribe from previous listener if exists
+    if (currentListener) {
+        currentListener(); 
+    }
 
-// 3. Real-time Listeners
-function loadBookings() {
-    const q = collection(db, "bookings"); 
-    
-    // onSnapshot listens for live changes
-    onSnapshot(q, (snapshot) => {
-        pendingList.innerHTML = '';
-        confirmedList.innerHTML = '';
-        
+    bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">Loading data...</td></tr>';
+
+    // B. Build Query
+    let q;
+    const bookingsRef = collection(db, "bookings");
+
+    if (dateFilter) {
+        // Filter by specific date
+        q = query(bookingsRef, where("bookingDate", "==", dateFilter));
+    } else {
+        // Show All (Limit to 50 for performance)
+        // Note: orderBy requires an index. If this fails, remove orderBy.
+        q = query(bookingsRef); 
+    }
+
+    // C. Start Listening
+    currentListener = onSnapshot(q, (snapshot) => {
+        let rowsHtml = '';
+        let todayCount = 0;
         let pendingCount = 0;
-        let confirmedCount = 0;
+        let revenue = 0;
 
         if (snapshot.empty) {
-            pendingList.innerHTML = '<p class="text-slate-400">No bookings found.</p>';
+            bookingsList.innerHTML = '';
+            emptyState.classList.remove('hidden');
             return;
         }
 
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            
-            const card = createBookingCard(doc.id, data);
+        emptyState.classList.add('hidden');
 
-            if (data.status === 'pending_verification') {
-                pendingList.appendChild(card);
-                pendingCount++;
-            } else if (data.status === 'confirmed') {
-                confirmedList.appendChild(card);
-                confirmedCount++;
-            }
+        // Convert to array to sort client-side (avoids index issues)
+        let bookings = [];
+        snapshot.forEach(doc => {
+            bookings.push({ id: doc.id, ...doc.data() });
         });
 
-        countPending.innerText = pendingCount;
-        countConfirmed.innerText = confirmedCount;
+        // Client-side Sort: Newest First
+        bookings.sort((a, b) => {
+             const tA = a.createdAt ? a.createdAt.seconds : 0;
+             const tB = b.createdAt ? b.createdAt.seconds : 0;
+             return tB - tA;
+        });
+
+        // Loop and Build HTML
+        bookings.forEach(data => {
+            // Update Stats
+            if (data.status === 'confirmed') revenue += parseFloat(data.totalCost || 0);
+            if (data.status === 'pending_verification' || data.status === 'pending_payment') pendingCount++;
+            
+            // Just a rough check for "Today" stat regardless of filter
+            const today = new Date().toISOString().split('T')[0];
+            if (data.bookingDate === today) todayCount++;
+
+            // Badge Logic
+            let badgeClass = 'bg-slate-100 text-slate-500';
+            if (data.status === 'confirmed') badgeClass = 'bg-green-100 text-green-700 border-green-200';
+            if (data.status.includes('pending')) badgeClass = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+            if (data.status === 'rejected') badgeClass = 'bg-red-100 text-red-700 border-red-200';
+
+            rowsHtml += `
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="px-6 py-4 font-bold text-slate-800">
+                        Guest
+                    </td>
+                    <td class="px-6 py-4 text-slate-600">
+                        <div class="font-bold">${data.bookingDate}</div>
+                        <div class="text-xs opacity-70">${data.timeSlot}</div>
+                    </td>
+                    <td class="px-6 py-4 text-slate-600">${data.pax}</td>
+                    <td class="px-6 py-4 font-mono text-xs">
+                        <span class="block font-bold">RM ${parseFloat(data.totalCost || 0).toFixed(2)}</span>
+                        <span class="text-teal-600">${data.paymentMethod || 'Manual'}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="${badgeClass} px-2 py-1 rounded-full text-xs font-bold border capitalize">
+                            ${data.status.replace('_', ' ')}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick="openVerifyModal('${data.id}', '${data.billCode || data.paymentRef || 'N/A'}')" 
+                            class="text-slate-400 hover:text-slate-900 p-2 rounded-full hover:bg-slate-200 transition">
+                            <i data-lucide="more-horizontal" class="w-5 h-5"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        bookingsList.innerHTML = rowsHtml;
+        
+        // Update Stats UI
+        statToday.innerText = todayCount;
+        statPending.innerText = pendingCount;
+        statRevenue.innerText = `RM ${revenue.toFixed(0)}`;
+        
+        // Refresh icons
         if(window.lucide) lucide.createIcons();
+    }, (error) => {
+        console.error("Snapshot Error:", error);
+        bookingsList.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-500">Error: ${error.message}</td></tr>`;
     });
 }
 
-// 4. Helper: Create HTML Card
-function createBookingCard(id, data) {
-    const div = document.createElement('div');
-    div.className = "bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition relative overflow-hidden group";
-    
-    // Status Badge Logic
-    let statusColor = data.status === 'pending_verification' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700';
-    let statusText = data.status === 'pending_verification' ? 'Action Required' : 'Confirmed';
-
-    // UPDATED: Button now passes 'transactionRef' instead of 'receiptUrl'
-    div.innerHTML = `
-        <div class="flex justify-between items-start mb-3">
-            <span class="px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${statusColor}">
-                ${statusText}
-            </span>
-            <span class="text-xs font-bold text-slate-400">${data.bookingDate}</span>
-        </div>
-
-        <h3 class="font-bold text-slate-800 text-lg mb-1">Pax: ${data.pax} Guests</h3>
-        <p class="text-sm text-slate-500 mb-4 flex items-center gap-2">
-            <i data-lucide="clock" class="w-3 h-3"></i> ${data.timeSlot}
-        </p>
-
-        <div class="flex items-center justify-between mt-auto border-t border-slate-50 pt-3">
-            <span class="font-bold text-slate-900">RM ${data.totalCost}</span>
-            ${data.status === 'pending_verification' 
-                ? `<button onclick="openVerifyModal('${id}', '${data.transactionRef || 'No Ref ID'}', '${data.restaurantName}', 'RM ${data.totalCost}')" class="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-teal-600 transition">Verify</button>` 
-                : '<span class="text-teal-500"><i data-lucide="check" class="w-5 h-5"></i></span>'}
-        </div>
-    `;
-    return div;
-}
-
-// 5. Modal Logic (UPDATED for Text Reference)
-window.openVerifyModal = (id, refCode, name, total) => {
-    currentBookingId = id;
-    
-    // Update the Text instead of an Image Source
-    if (modalRefDisplay) {
-        modalRefDisplay.innerText = refCode;
-    }
-
-    modalCustomer.innerText = "Verify Payment"; 
-    modalTotal.innerText = total;
-    modal.classList.remove('hidden');
-};
-
-window.closeModal = () => {
-    modal.classList.add('hidden');
-    currentBookingId = null;
-};
-
-// Approve Action
-btnApprove.addEventListener('click', async () => {
-    if (!currentBookingId) return;
-    
-    btnApprove.innerText = "Processing...";
-    try {
-        const bookingRef = doc(db, "bookings", currentBookingId);
-        await updateDoc(bookingRef, {
-            status: "confirmed"
-        });
-        closeModal();
-        btnApprove.innerText = "Approve Payment";
-    } catch (error) {
-        console.error("Error approving:", error);
-        alert("Error updating status");
-    }
+// 3. Filter Event Listeners
+filterDateInput.addEventListener('change', (e) => {
+    setupRealtimeListener(e.target.value);
 });
 
-// Reject Action
-btnReject.addEventListener('click', async () => {
-    if (!currentBookingId) return;
+btnShowAll.addEventListener('click', () => {
+    filterDateInput.value = ''; // Clear picker
+    setupRealtimeListener(null); // Load all
+});
 
-    if(confirm("Are you sure you want to reject this receipt?")) {
-        try {
-            const bookingRef = doc(db, "bookings", currentBookingId);
-            await updateDoc(bookingRef, {
-                status: "payment_rejected",
-                rejectionTimestamp: Date.now() // For the 10-minute timer logic later
-            });
-            closeModal();
-        } catch (error) {
-            console.error("Error rejecting:", error);
-        }
+// 4. Modal & Actions Logic
+window.openVerifyModal = (id, ref) => {
+    selectedBookingId = id;
+    modalRef.innerText = ref;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+};
+
+const hideModal = () => {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    selectedBookingId = null;
+};
+
+closeModal.onclick = hideModal;
+btnApprove.onclick = () => updateStatus('confirmed');
+btnReject.onclick = () => updateStatus('rejected');
+
+async function updateStatus(newStatus) {
+    if (!selectedBookingId) return;
+    
+    // UI Feedback
+    const oldText = newStatus === 'confirmed' ? btnApprove.innerText : btnReject.innerText;
+    if(newStatus === 'confirmed') btnApprove.innerText = "..."; 
+    else btnReject.innerText = "...";
+
+    try {
+        const docRef = doc(db, "bookings", selectedBookingId);
+        await updateDoc(docRef, { status: newStatus });
+        
+        // Note: No need to reload! onSnapshot will update the row automatically.
+        hideModal();
+
+    } catch (error) {
+        console.error("Update Error:", error);
+        alert("Failed to update: " + error.message);
+    } finally {
+        // Reset buttons
+        btnApprove.innerText = "Approve";
+        btnReject.innerText = "Reject";
     }
+}
+
+// 5. Logout
+logoutBtn.addEventListener('click', () => {
+    signOut(auth).then(() => window.location.href = 'index.html');
 });

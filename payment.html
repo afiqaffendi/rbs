@@ -36,9 +36,14 @@
                     <i data-lucide="receipt" class="w-4 h-4 text-teal-500"></i> Summary
                 </h2>
                 <div id="booking-details" class="text-sm text-slate-600 space-y-3 font-medium">
-                    <p class="animate-pulse text-slate-300">Loading booking details...</p>
+                    <div class="animate-pulse space-y-2">
+                        <div class="h-4 bg-slate-100 rounded w-3/4"></div>
+                        <div class="h-4 bg-slate-100 rounded w-1/2"></div>
+                    </div>
                 </div>
+                
                 <div class="border-t border-dashed border-slate-200 my-4"></div>
+                
                 <div class="flex justify-between items-center">
                     <span class="font-bold text-slate-900">Total to Pay</span>
                     <span id="display-total" class="font-bold text-xl text-teal-600">RM 0.00</span>
@@ -47,14 +52,16 @@
 
             <div>
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Select Payment Method</h3>
+                
                 <button id="pay-fpx-btn" class="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg shadow-slate-200 active:scale-95 transition-all flex justify-between items-center px-6 hover:bg-teal-700">
                     <span class="flex items-center gap-3">
                         <i data-lucide="globe" class="w-5 h-5 text-teal-400"></i> Online Banking (FPX)
                     </span>
                     <i data-lucide="chevron-right" class="w-5 h-5 text-slate-400"></i>
                 </button>
-                <p class="text-[10px] text-center text-slate-400 mt-4">
-                    Secured by ToyyibPay. <br>You will be redirected to your bank.
+                
+                <p class="text-[10px] text-center text-slate-400 mt-4 leading-relaxed">
+                    Secured by ToyyibPay. <br>You will be redirected to your bank to complete the transaction.
                 </p>
             </div>
 
@@ -62,7 +69,7 @@
 
         <div id="loading-overlay" class="absolute inset-0 bg-white/90 backdrop-blur z-50 flex flex-col items-center justify-center hidden fade-in">
             <div class="w-16 h-16 border-4 border-slate-100 border-t-teal-500 rounded-full animate-spin mb-4"></div>
-            <h2 class="text-lg font-bold text-slate-900">Processing Payment</h2>
+            <h2 class="text-lg font-bold text-slate-900">Processing</h2>
             <p class="text-sm text-slate-400">Please wait...</p>
         </div>
 
