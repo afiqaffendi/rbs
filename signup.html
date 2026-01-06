@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DTEBS - Sign Up</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="login-container">
+        <h1>Create Account</h1>
+        <p>Join DTEBS today</p>
+        
+        <form id="signup-form">
+            <input type="email" id="signup-email" placeholder="Email Address" required>
+            <input type="password" id="signup-password" placeholder="Password (min 6 chars)" required>
+            
+            <select id="signup-role" required>
+                <option value="" disabled selected>Select Account Type</option>
+                <option value="Customer">Customer</option>
+                <option value="Restaurant Owner">Restaurant Owner</option>
+            </select>
+
+            <button type="submit">Sign Up</button>
+        </form>
+
+        <p>Already have an account? <a href="index.html">Login here</a></p>
+        <p id="signup-error-msg" style="color: red; margin-top: 10px;"></p>
+    </div>
+
+    <script type="module" src="js/signup.js"></script>
+
+</body>
+</html>
