@@ -1,13 +1,11 @@
-import { auth, db, storage } from './firebase-config.js';
+import { auth, db } from './firebase-config.js'; // REMOVED 'storage'
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // DOM Elements
 const detailsDiv = document.getElementById('booking-details');
 const totalDisplay = document.getElementById('display-total');
-const fileInput = document.getElementById('receipt-upload');
-const previewImg = document.getElementById('preview-img');
+const refInput = document.getElementById('transaction-ref'); // CHANGED
 const submitBtn = document.getElementById('confirm-payment-btn');
 const statusMsg = document.getElementById('upload-status');
 
@@ -26,7 +24,6 @@ onAuthStateChanged(auth, (user) => {
 });
 
 function loadBookingData() {
-    // Get data saved from previous page
     const dataStr = sessionStorage.getItem('tempBooking');
     if (!dataStr) {
         alert("No booking found. Redirecting to home.");
@@ -36,7 +33,6 @@ function loadBookingData() {
 
     bookingData = JSON.parse(dataStr);
 
-    // Display Data
     let menuHtml = bookingData.menuItems.length > 0 
         ? `<ul>${bookingData.menuItems.map(item => `<li>${item.name}</li>`).join('')}</ul>`
         : 'No pre-order items';
@@ -52,57 +48,50 @@ function loadBookingData() {
     totalDisplay.innerText = `RM ${bookingData.totalCost}`;
 }
 
-// 2. Handle File Selection (Preview)
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            previewImg.src = e.target.result;
-            previewImg.style.display = 'block';
-        };
-        reader.readAsDataURL(file);
-        submitBtn.disabled = false; // Enable button
+// 2. Enable Button when user types
+refInput.addEventListener('input', (e) => {
+    if (e.target.value.trim().length > 3) {
+        submitBtn.disabled = false;
         submitBtn.style.backgroundColor = '#28a745';
+        submitBtn.style.cursor = 'pointer';
+    } else {
+        submitBtn.disabled = true;
+        submitBtn.style.backgroundColor = '#ccc';
     }
 });
 
-// 3. Handle Submit (Upload & Save)
+// 3. Handle Submit (Save Text Only)
 submitBtn.addEventListener('click', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
+    const refCode = refInput.value.trim();
+    if (!refCode) return;
 
     submitBtn.disabled = true;
-    submitBtn.innerText = "Uploading...";
-    statusMsg.innerText = "Please wait, uploading receipt...";
+    submitBtn.innerText = "Verifying...";
+    statusMsg.innerText = "Submitting booking...";
 
     try {
-        // A. Upload Image to Firebase Storage
-        const storageRef = ref(storage, `receipts/${userUid}_${Date.now()}.jpg`);
-        const snapshot = await uploadBytes(storageRef, file);
-        const downloadURL = await getDownloadURL(snapshot.ref);
-
-        console.log("File uploaded at:", downloadURL);
-
-        // B. Save Booking to Firestore
+        // SAVE TO FIRESTORE (No Image Upload)
         await addDoc(collection(db, "bookings"), {
             restaurantId: bookingData.restaurantId,
-            restaurantName: bookingData.restaurantName, // Useful for display
+            restaurantName: bookingData.restaurantName,
             customerId: userUid,
             bookingDate: bookingData.date,
             timeSlot: bookingData.timeSlot,
             pax: parseInt(bookingData.pax),
             menuItems: bookingData.menuItems,
             totalCost: parseFloat(bookingData.totalCost),
-            receiptUrl: downloadURL,
-            status: "pending_verification", // The default status
+            
+            // NEW FIELD: Transaction Reference
+            transactionRef: refCode, 
+            
+            status: "pending_verification",
             createdAt: Timestamp.now()
         });
 
-        // C. Success & Redirect
-        alert("Payment Submitted! Waiting for verification.");
-        sessionStorage.removeItem('tempBooking'); // Clear temp data
-        window.location.href = 'customer-bookings.html'; // We will build this next
+        // Success & Redirect
+        alert("Payment Reference Submitted! Waiting for verification.");
+        sessionStorage.removeItem('tempBooking');
+        window.location.href = 'customer-bookings.html';
 
     } catch (error) {
         console.error("Error:", error);

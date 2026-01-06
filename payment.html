@@ -36,10 +36,16 @@
         </div>
 
         <div class="upload-section">
-            <label for="receipt-upload">Upload Payment Receipt:</label>
-            <input type="file" id="receipt-upload" accept="image/*">
-            <img id="preview-img" style="display: none; width: 100%; margin-top: 10px; border-radius: 5px;">
+            <label for="transaction-ref" style="font-weight: bold; display: block; margin-bottom: 10px;">
+                Enter Transaction Reference ID:
+            </label>
+            <input type="text" id="transaction-ref" placeholder="e.g., 230105123456" 
+                   style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px;">
             
+            <p style="font-size: 0.9rem; color: #666; margin-bottom: 15px;">
+                *You can find this on your online banking receipt.
+            </p>
+
             <button id="confirm-payment-btn" disabled>Submit Payment</button>
             <p id="upload-status" style="margin-top: 10px; color: #666;"></p>
         </div>

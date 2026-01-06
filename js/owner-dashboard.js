@@ -1,6 +1,6 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, onSnapshot, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const pendingList = document.getElementById('pending-list');
@@ -9,11 +9,10 @@ const countPending = document.getElementById('count-pending');
 const countConfirmed = document.getElementById('count-confirmed');
 const logoutBtn = document.getElementById('logout-btn');
 
-// Modal Elements
+// Modal Elements (UPDATED for Text Reference)
 const modal = document.getElementById('verification-modal');
-const modalReceipt = document.getElementById('modal-receipt');
+const modalRefDisplay = document.getElementById('modal-ref-display'); // Changed from modalReceipt
 const modalCustomer = document.getElementById('modal-customer');
-const modalDetails = document.getElementById('modal-details');
 const modalTotal = document.getElementById('modal-total');
 const btnApprove = document.getElementById('btn-approve');
 const btnReject = document.getElementById('btn-reject');
@@ -35,11 +34,6 @@ onAuthStateChanged(auth, async (user) => {
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (userDoc.exists() && userDoc.data().role === 'Restaurant Owner') {
             currentOwnerId = user.uid;
-            
-            // To make this simple for the prototype, we assume the Owner ID 
-            // is stored in the restaurant document. 
-            // OR we just fetch ALL bookings for now (easier for demo).
-            // In a real app, we'd filter: where("restaurantOwnerId", "==", user.uid)
             loadBookings(); 
         } else {
             alert("Access Denied: You are not a Restaurant Owner.");
@@ -53,7 +47,7 @@ logoutBtn.addEventListener('click', async () => {
     window.location.href = 'index.html';
 });
 
-// 3. Real-time Listeners (The "Magic" Part)
+// 3. Real-time Listeners
 function loadBookings() {
     const q = collection(db, "bookings"); 
     
@@ -72,7 +66,6 @@ function loadBookings() {
 
         snapshot.forEach((doc) => {
             const data = doc.data();
-            // Optional: Filter by specific restaurant ID if you had multiple
             
             const card = createBookingCard(doc.id, data);
 
@@ -100,6 +93,7 @@ function createBookingCard(id, data) {
     let statusColor = data.status === 'pending_verification' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700';
     let statusText = data.status === 'pending_verification' ? 'Action Required' : 'Confirmed';
 
+    // UPDATED: Button now passes 'transactionRef' instead of 'receiptUrl'
     div.innerHTML = `
         <div class="flex justify-between items-start mb-3">
             <span class="px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${statusColor}">
@@ -116,18 +110,23 @@ function createBookingCard(id, data) {
         <div class="flex items-center justify-between mt-auto border-t border-slate-50 pt-3">
             <span class="font-bold text-slate-900">RM ${data.totalCost}</span>
             ${data.status === 'pending_verification' 
-                ? `<button onclick="openVerifyModal('${id}', '${data.receiptUrl}', '${data.restaurantName}', 'RM ${data.totalCost}')" class="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-teal-600 transition">Verify</button>` 
+                ? `<button onclick="openVerifyModal('${id}', '${data.transactionRef || 'No Ref ID'}', '${data.restaurantName}', 'RM ${data.totalCost}')" class="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-teal-600 transition">Verify</button>` 
                 : '<span class="text-teal-500"><i data-lucide="check" class="w-5 h-5"></i></span>'}
         </div>
     `;
     return div;
 }
 
-// 5. Modal Logic (Approve/Reject)
-window.openVerifyModal = (id, receiptUrl, name, total) => {
+// 5. Modal Logic (UPDATED for Text Reference)
+window.openVerifyModal = (id, refCode, name, total) => {
     currentBookingId = id;
-    modalReceipt.src = receiptUrl;
-    modalCustomer.innerText = "Order Verification"; // You can fetch customer name if stored
+    
+    // Update the Text instead of an Image Source
+    if (modalRefDisplay) {
+        modalRefDisplay.innerText = refCode;
+    }
+
+    modalCustomer.innerText = "Verify Payment"; 
     modalTotal.innerText = total;
     modal.classList.remove('hidden');
 };
