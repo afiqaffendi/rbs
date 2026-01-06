@@ -5,12 +5,11 @@ import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/f
 const restaurantList = document.getElementById('restaurant-list');
 const logoutBtn = document.getElementById('logout-btn');
 
-// 1. Security Check: Redirect if not logged in
+// 1. Auth Check
 onAuthStateChanged(auth, (user) => {
     if (!user) {
-        window.location.href = 'index.html'; // Kick back to login
+        window.location.href = 'index.html';
     } else {
-        // Only load data if user is logged in
         loadRestaurants();
     }
 });
@@ -25,40 +24,72 @@ logoutBtn.addEventListener('click', async () => {
     }
 });
 
-// 3. Fetch and Display Restaurants
+// 3. Render Restaurants
 async function loadRestaurants() {
-    restaurantList.innerHTML = ''; // Clear "Loading..." text
-
     try {
         const querySnapshot = await getDocs(collection(db, "restaurants"));
 
         if (querySnapshot.empty) {
-            restaurantList.innerHTML = '<p>No restaurants found.</p>';
+            restaurantList.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <i data-lucide="store" class="w-12 h-12 mb-2 opacity-50"></i>
+                    <p class="text-sm font-bold">No restaurants found.</p>
+                </div>`;
+            if(window.lucide) lucide.createIcons();
             return;
         }
+
+        restaurantList.innerHTML = ''; // Clear skeleton
 
         querySnapshot.forEach((doc) => {
             const data = doc.data();
             
-            // Create HTML Card for each restaurant
-            const card = document.createElement('div');
-            card.classList.add('restaurant-card');
+            // Random image for demo purposes (since DB might not have images yet)
+            // In a real app, use: data.imageUrl || 'default.jpg'
+            const randomImg = `https://images.unsplash.com/photo-1552566626-52f8b828add9?w=600&q=80&random=${doc.id}`;
             
-            // Note: We pass the ID, Name, Hours, and Capacity to the function
+            const card = document.createElement('div');
+            // Tailwind Card Styling
+            card.className = "group bg-white rounded-2xl p-3 border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer";
+            
+            card.onclick = () => {
+                // Link to the new Reservation Page
+                window.location.href = `reservation.html?id=${doc.id}`;
+            };
+
             card.innerHTML = `
-                <h3>${data.name}</h3>
-                <p class="address">📍 ${data.address}</p>
-                <p class="hours">🕒 ${data.operatingHours}</p>
-                <button onclick="window.location.href='booking-form.html?id=${doc.id}'">
-                    Book Now
-                </button>
+                <div class="h-40 w-full rounded-xl overflow-hidden relative bg-slate-100 mb-3">
+                    <img src="${data.imageUrl || randomImg}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                    <div class="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold text-slate-800 flex items-center gap-1 shadow-sm">
+                        <i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500"></i> 4.8
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg leading-tight">${data.name}</h3>
+                        <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                            <i data-lucide="map-pin" class="w-3 h-3"></i> ${data.address || 'Location N/A'}
+                        </p>
+                        <p class="text-[10px] text-slate-400 mt-2 font-medium bg-slate-50 inline-block px-2 py-1 rounded">
+                            🕒 ${data.operatingHours || '10:00 AM - 10:00 PM'}
+                        </p>
+                    </div>
+                    
+                    <button class="bg-slate-900 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg group-hover:bg-teal-600 transition-colors">
+                        <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
             `;
             
             restaurantList.appendChild(card);
         });
 
+        // Initialize Icons
+        if(window.lucide) lucide.createIcons();
+
     } catch (error) {
         console.error("Error loading restaurants:", error);
-        restaurantList.innerHTML = '<p style="color:red">Error loading data.</p>';
+        restaurantList.innerHTML = '<p class="text-red-500 text-center text-sm font-bold mt-10">Error loading data.</p>';
     }
 }
