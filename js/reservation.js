@@ -1,5 +1,5 @@
 import { auth, db } from './firebase-config.js';
-import { doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { doc, getDoc, collection, query, where, getDocs, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // --- State ---
@@ -8,6 +8,7 @@ let restaurantId = new URLSearchParams(window.location.search).get('id');
 let selectedDate = null;
 let selectedTime = null;
 let pax = 2;
+let userUid = null;
 
 // --- Elements ---
 const paxDisplay = document.getElementById('pax-display');
@@ -23,24 +24,30 @@ const resAddrEl = document.getElementById('res-address');
 document.addEventListener('DOMContentLoaded', () => {
     if(window.lucide) lucide.createIcons();
     
-    // Set Minimum Date to Today
+    // UX IMPROVEMENT: Auto-set today's date
     const today = new Date().toISOString().split('T')[0];
-    dateInput.setAttribute('min', today);
+    if(dateInput) {
+        dateInput.setAttribute('min', today);
+        dateInput.value = today; // Auto-select today
+        selectedDate = today;    // Sync state
+    }
 });
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = 'index.html';
-    } else if (restaurantId) {
-        await loadRestaurantData(restaurantId);
     } else {
-        alert("No restaurant selected!");
-        window.location.href = 'customer-home.html';
+        userUid = user.uid;
+        if (restaurantId) {
+            await loadRestaurantData(restaurantId);
+        } else {
+            alert("No restaurant selected!");
+            window.location.href = 'customer-home.html';
+        }
     }
 });
 
 // --- Functions ---
-
 async function loadRestaurantData(id) {
     try {
         const docRef = doc(db, "restaurants", id);
@@ -48,35 +55,45 @@ async function loadRestaurantData(id) {
 
         if (docSnap.exists()) {
             currentRestaurant = docSnap.data();
-            resNameEl.innerText = currentRestaurant.name;
-            resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
+            if(resNameEl) resNameEl.innerText = currentRestaurant.name;
+            if(resAddrEl) resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
+            
+            // Re-render slots if date is already selected
+            if(selectedDate) renderTimeSlots();
         } else {
-            resNameEl.innerText = "Restaurant Not Found";
+            if(resNameEl) resNameEl.innerText = "Restaurant Not Found";
         }
     } catch (error) {
         console.error("Error loading restaurant:", error);
     }
 }
 
-// Global scope for HTML button access
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
         pax += change;
-        paxDisplay.innerText = pax;
-        // Re-check availability if a slot is already selected
+        if(paxDisplay) paxDisplay.innerText = pax;
+        // UX IMPROVEMENT: Re-check availability immediately if user changes group size
         if(selectedTime) checkAvailability(selectedTime);
     }
 };
 
-dateInput.addEventListener('change', (e) => {
-    selectedDate = e.target.value;
-    selectedTime = null; // Reset time when date changes
-    renderTimeSlots();
-    updateSummary();
-});
+if(dateInput) {
+    dateInput.addEventListener('change', (e) => {
+        selectedDate = e.target.value;
+        selectedTime = null; 
+        renderTimeSlots();
+        updateSummary();
+        // Reset button state
+        if(bookBtn) {
+            bookBtn.disabled = true;
+            bookBtn.innerText = "Select a Time";
+            bookBtn.classList.remove('bg-green-600', 'bg-red-500', 'bg-slate-300', 'text-slate-500', 'bg-orange-500');
+            bookBtn.classList.add('bg-slate-900');
+        }
+    });
+}
 
 function generateTimeSlots(operatingHours) {
-    // Basic parser: "09:00 AM - 10:00 PM"
     const parseTime = (t) => {
         const [time, modifier] = t.split(' ');
         let [hours, minutes] = time.split(':').map(Number);
@@ -100,18 +117,16 @@ function generateTimeSlots(operatingHours) {
     let endMin = parseTime(endStr);
     
     let slots = [];
-    // 2-hour intervals
     while (startMin + 120 <= endMin) {
         slots.push(formatTime(startMin));
-        startMin += 60; // Show slots every hour
+        startMin += 60; 
     }
     return slots;
 }
 
 function renderTimeSlots() {
-    slotsContainer.innerHTML = '';
-    bookBtn.disabled = true;
-    availabilityMsg.classList.add('hidden');
+    if(slotsContainer) slotsContainer.innerHTML = '';
+    if(availabilityMsg) availabilityMsg.classList.add('hidden');
 
     if (!selectedDate || !currentRestaurant) return;
 
@@ -119,27 +134,40 @@ function renderTimeSlots() {
 
     slots.forEach(time => {
         const btn = document.createElement('button');
+        // UX IMPROVEMENT: Added ring effect for selected state
         btn.className = `
-            py-3 px-2 rounded-xl text-sm font-bold border transition-all
+            py-3 px-2 rounded-xl text-sm font-bold border transition-all relative
             ${selectedTime === time 
-                ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
+                ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-teal-500 ring-offset-2' 
                 : 'bg-white text-slate-600 border-slate-200 hover:border-teal-500 hover:text-teal-600'}
         `;
         btn.innerText = time;
+        
         btn.onclick = () => {
             selectedTime = time;
-            renderTimeSlots();
+            renderTimeSlots(); // Re-render to show active state
             checkAvailability(time);
         };
-        slotsContainer.appendChild(btn);
+        if(slotsContainer) slotsContainer.appendChild(btn);
     });
 }
 
+// --- PHASE 2: Enhanced Availability Check (SMART MESSAGES) ---
 async function checkAvailability(timeSlot) {
     updateSummary();
-    bookBtn.disabled = true;
-    bookBtn.innerText = "Checking...";
-    availabilityMsg.classList.add('hidden');
+    
+    if(bookBtn) {
+        bookBtn.disabled = true;
+        bookBtn.innerText = "Checking Availability...";
+        // Reset styles
+        bookBtn.classList.remove('bg-red-500', 'bg-slate-300', 'text-slate-500', 'bg-green-600', 'bg-orange-500');
+        bookBtn.classList.add('bg-slate-900');
+    }
+    
+    if(availabilityMsg) {
+        availabilityMsg.classList.add('hidden');
+        availabilityMsg.className = "text-center text-xs font-bold mt-2 hidden"; // Reset classes
+    }
 
     try {
         const q = query(
@@ -147,49 +175,115 @@ async function checkAvailability(timeSlot) {
             where("restaurantId", "==", restaurantId),
             where("bookingDate", "==", selectedDate),
             where("timeSlot", "==", timeSlot),
-            where("status", "in", ["confirmed", "pending"])
+            // Check ALL occupied slots, even those pending payment
+            where("status", "in", ["confirmed", "pending_payment", "pending_verification"])
         );
 
         const snapshot = await getDocs(q);
         let occupiedPax = 0;
         snapshot.forEach(doc => occupiedPax += doc.data().pax);
 
-        if ((occupiedPax + pax) <= (currentRestaurant.capacity || 50)) {
-            bookBtn.disabled = false;
-            bookBtn.innerText = "Confirm Reservation";
+        const capacity = currentRestaurant.capacity || 50;
+        const remaining = capacity - occupiedPax;
+
+        // LOGIC: Check scenarios
+        if (remaining <= 0) {
+            // SCENARIO A: Full
+            if(bookBtn) {
+                bookBtn.innerText = "Slot Full";
+                bookBtn.classList.remove('bg-slate-900');
+                bookBtn.classList.add('bg-slate-300', 'text-slate-500'); // Visual disabled style
+            }
+            showAvailabilityMsg(`Sorry, this slot is fully booked.`, "text-red-500");
+
+        } else if (pax > remaining) {
+            // SCENARIO B: Available, but not for this group size
+            if(bookBtn) {
+                bookBtn.innerText = "Insufficient Seats";
+                bookBtn.classList.remove('bg-slate-900');
+                bookBtn.classList.add('bg-orange-500', 'text-white');
+            }
+            showAvailabilityMsg(`Only ${remaining} seats left. Please reduce pax.`, "text-orange-600");
+
         } else {
-            bookBtn.disabled = true;
-            bookBtn.innerText = "Slot Full";
-            availabilityMsg.classList.remove('hidden');
+            // SCENARIO C: Available
+            if(bookBtn) {
+                bookBtn.disabled = false;
+                bookBtn.innerText = "Confirm Reservation";
+                bookBtn.classList.remove('bg-slate-300', 'text-slate-500', 'bg-orange-500');
+                bookBtn.classList.add('bg-slate-900'); // Or your primary color
+            }
+            
+            // Show "Hurry" message if low availability
+            if (remaining < 10) {
+                showAvailabilityMsg(`Hurry! Only ${remaining} seats remaining.`, "text-orange-600");
+            } else {
+                showAvailabilityMsg(`Available (${remaining} seats left)`, "text-green-600");
+            }
         }
 
     } catch (e) {
         console.error(e);
-        bookBtn.innerText = "Error Checking";
+        if(bookBtn) bookBtn.innerText = "Error Checking";
+    }
+}
+
+function showAvailabilityMsg(text, colorClass) {
+    if(availabilityMsg) {
+        availabilityMsg.innerText = text;
+        availabilityMsg.className = `text-center text-xs font-bold mt-2 ${colorClass}`;
+        availabilityMsg.classList.remove('hidden');
     }
 }
 
 function updateSummary() {
-    if (selectedDate && selectedTime) {
-        summaryText.innerText = `${selectedDate} @ ${selectedTime}`;
-    } else {
-        summaryText.innerText = "-- / --";
+    if (summaryText) {
+        if (selectedDate && selectedTime) {
+            summaryText.innerText = `${selectedDate} @ ${selectedTime}`;
+        } else {
+            summaryText.innerText = "-- / --";
+        }
     }
 }
 
-// FIX: Ensure totalCost and menuItems are always saved
-window.handleBooking = () => {
-    const bookingData = {
-        restaurantId: restaurantId,
-        restaurantName: currentRestaurant.name,
-        date: selectedDate,
-        timeSlot: selectedTime,
-        pax: pax,
-        deposit: 50.00,
-        totalCost: 50.00, // <--- Added this
-        menuItems: []     // <--- Added this
-    };
-    
-    sessionStorage.setItem('tempBooking', JSON.stringify(bookingData));
-    window.location.href = 'payment.html'; 
+// === Phase 1 Logic: Save directly to Firestore ===
+window.handleBooking = async () => {
+    if(!userUid) {
+        alert("Please login first.");
+        return;
+    }
+
+    if(bookBtn) {
+        bookBtn.disabled = true;
+        bookBtn.innerText = "Processing...";
+    }
+
+    try {
+        const bookingData = {
+            restaurantId: restaurantId,
+            restaurantName: currentRestaurant.name,
+            customerId: userUid,
+            bookingDate: selectedDate,
+            timeSlot: selectedTime,
+            pax: parseInt(pax),
+            menuItems: [],
+            totalCost: 50.00, // Fixed price for now
+            deposit: 50.00,
+            status: "pending_payment", 
+            createdAt: Timestamp.now()
+        };
+        
+        // Save to Firestore
+        const docRef = await addDoc(collection(db, "bookings"), bookingData);
+        // Redirect with ID
+        window.location.href = `payment.html?id=${docRef.id}`; 
+        
+    } catch (error) {
+        console.error("Booking Error:", error);
+        alert("Failed to create booking: " + error.message);
+        if(bookBtn) {
+            bookBtn.disabled = false;
+            bookBtn.innerText = "Try Again";
+        }
+    }
 };
