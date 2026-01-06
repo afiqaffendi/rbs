@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DTEBS - My Bookings</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">My Bookings</div>
+        <div class="nav-links">
+            <a href="customer-home.html">Find Restaurant</a>
+            <button id="logout-btn">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <h1>Your Reservations</h1>
+            <p>Track the status of your dining requests</p>
+        </header>
+
+        <div id="bookings-list" class="bookings-grid">
+            <p>Loading your bookings...</p>
+        </div>
+    </div>
+
+    <script type="module" src="js/customer-bookings.js"></script>
+</body>
+</html>

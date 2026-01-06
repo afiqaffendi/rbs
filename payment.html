@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DTEBS - Payment</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">Secure Payment</div>
+    </nav>
+
+    <div class="container" style="max-width: 600px;">
+        <div class="summary-card">
+            <h2>Booking Summary</h2>
+            <div id="booking-details">
+                <p>Loading details...</p>
+            </div>
+            <hr>
+            <div class="total-row">
+                <h3>Total to Pay:</h3>
+                <h3 id="display-total" style="color: #28a745;">RM 0.00</h3>
+            </div>
+        </div>
+
+        <div class="payment-instruction">
+            <h3>Bank Transfer Details</h3>
+            <p>Please transfer the total amount to:</p>
+            <div class="bank-box">
+                <p><strong>Bank:</strong> Maybank</p>
+                <p><strong>Account Name:</strong> DTEBS Holdings</p>
+                <p><strong>Account No:</strong> 1122-3344-5566</p>
+            </div>
+        </div>
+
+        <div class="upload-section">
+            <label for="receipt-upload">Upload Payment Receipt:</label>
+            <input type="file" id="receipt-upload" accept="image/*">
+            <img id="preview-img" style="display: none; width: 100%; margin-top: 10px; border-radius: 5px;">
+            
+            <button id="confirm-payment-btn" disabled>Submit Payment</button>
+            <p id="upload-status" style="margin-top: 10px; color: #666;"></p>
+        </div>
+    </div>
+
+    <script type="module" src="js/payment.js"></script>
+</body>
+</html>
