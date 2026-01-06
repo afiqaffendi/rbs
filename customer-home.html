@@ -53,17 +53,24 @@
                 <i data-lucide="home" class="w-6 h-6"></i>
                 <span class="text-[10px] font-bold">Home</span>
             </button>
+            
             <button onclick="window.location.href='customer-bookings.html'" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-900 transition">
                 <i data-lucide="calendar-check" class="w-6 h-6"></i>
                 <span class="text-[10px] font-bold">My Bookings</span>
             </button>
-            <button class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-900 transition">
+            
+            <button onclick="window.location.href='customer-profile.html'" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-900 transition">
                 <i data-lucide="user" class="w-6 h-6"></i>
                 <span class="text-[10px] font-bold">Profile</span>
             </button>
         </div>
+
     </div>
 
     <script type="module" src="js/customer-home.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
 </body>
 </html>
