@@ -32,8 +32,6 @@ function setupRealtimeListener(dateFilter) {
 
     bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
 
-    // QUERY: Fetch ALL bookings for this date (Removed status filter)
-    // This ensures stats are accurate even after marking as 'completed'
     const q = query(
         collection(db, "bookings"), 
         where("bookingDate", "==", dateFilter)
@@ -48,6 +46,7 @@ function setupRealtimeListener(dateFilter) {
         if (snapshot.empty) {
             renderTable([]);
             updateStats(0, 0, 0);
+            updateChart([]); // Clear chart
             return;
         }
 
@@ -55,15 +54,23 @@ function setupRealtimeListener(dateFilter) {
             const data = doc.data();
             bookings.push({ id: doc.id, ...data });
             
-            // Stats: Count confirmed AND completed (money earned)
+            // Stats: Count confirmed AND completed
             if (['confirmed', 'completed'].includes(data.status)) {
                 if (data.pax) totalGuests += parseInt(data.pax);
-                if (data.totalCost) revenue += parseFloat(data.totalCost);
+                
+                // === CHANGED: SUBTRACT DEPOSIT FROM REVENUE ===
+                if (data.totalCost) {
+                    const rawCost = parseFloat(data.totalCost);
+                    // Subtract fixed RM 50 deposit. Ensure we don't add negative numbers.
+                    const actualRevenue = Math.max(0, rawCost - 50); 
+                    revenue += actualRevenue;
+                }
+                
                 confirmedCount++;
             }
         });
 
-        // Sort: Put 'confirmed' (Active) at top, then 'completed', then others
+        // Sort: Active first, then completed, then others
         bookings.sort((a, b) => {
             const statusOrder = { 'confirmed': 1, 'completed': 2, 'pending_payment': 3, 'cancelled': 4 };
             return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
@@ -71,6 +78,8 @@ function setupRealtimeListener(dateFilter) {
         
         renderTable(bookings);
         updateStats(confirmedCount, totalGuests, revenue);
+        
+        // Pass data to chart
         updateChart(bookings); 
 
     }, (error) => {
@@ -79,7 +88,7 @@ function setupRealtimeListener(dateFilter) {
     });
 }
 
-// 3. Render Table with Actions
+// 3. Render Table
 function renderTable(data) {
     bookingsList.innerHTML = '';
     
@@ -91,18 +100,15 @@ function renderTable(data) {
 
     data.forEach(item => {
         const row = document.createElement('tr');
-        // Dim the row if it's not active
         const isDimmed = item.status === 'cancelled' || item.status === 'rejected';
         row.className = `border-b border-gray-50 last:border-none transition ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-gray-50'}`;
         
-        // Determine Status Badge
         let badge = '';
         if(item.status === 'confirmed') badge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Active</span>`;
         else if(item.status === 'completed') badge = `<span class="bg-slate-900 text-white px-2 py-1 rounded-full text-xs font-bold">Completed</span>`;
         else if(item.status === 'cancelled') badge = `<span class="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs font-bold">Cancelled</span>`;
         else badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-bold">${item.status}</span>`;
 
-        // Action Buttons Logic
         let actionButtons = '-';
         if (item.status === 'confirmed') {
             actionButtons = `
@@ -153,10 +159,8 @@ function renderTable(data) {
     if(window.lucide) lucide.createIcons();
 }
 
-// 4. Handle Status Updates (Global Function)
 window.updateStatus = async (id, newStatus) => {
     if(!confirm(`Mark this booking as ${newStatus}?`)) return;
-
     try {
         const docRef = doc(db, "bookings", id);
         await updateDoc(docRef, { status: newStatus });
@@ -173,7 +177,7 @@ function updateStats(total, guests, revenue) {
     statRevenue.innerText = `RM ${revenue.toFixed(2)}`;
 }
 
-// 5. Analytics Chart
+// 4. Analytics Chart Logic
 function initChart() {
     const ctx = document.getElementById('revenueChart').getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
@@ -185,8 +189,8 @@ function initChart() {
         data: {
             labels: ['9 AM', '11 AM', '1 PM', '3 PM', '5 PM', '7 PM', '9 PM'],
             datasets: [{
-                label: 'Revenue (RM)',
-                data: [0,0,0,0,0,0,0],
+                label: 'Food Sales (RM)', // Renamed Label
+                data: [0,0,0,0,0,0,0], 
                 borderColor: '#0d9488', 
                 backgroundColor: gradient,
                 borderWidth: 2,
@@ -207,18 +211,51 @@ function initChart() {
     });
 }
 
+// === CHANGED: CALCULATE REAL REVENUE (MINUS DEPOSIT) ===
 function updateChart(bookings) {
-    // Simple logic: Sum revenue per 2-hour block (Simulated distribution for now)
-    // You can make this smarter later
-    const dataPoints = [0,0,0,0,0,0,0]; 
-    if(bookings.length > 0) {
-        dataPoints.fill(10); // Dummy visual for now
-    }
-    revenueChart.data.datasets[0].data = dataPoints;
+    const buckets = [0, 0, 0, 0, 0, 0, 0];
+
+    bookings.forEach(b => {
+        if (['confirmed', 'completed'].includes(b.status)) {
+            const hour = parseHour(b.timeSlot);
+            const rawCost = parseFloat(b.totalCost || 0);
+            
+            // Subtract Deposit (50) for the chart too
+            const amt = Math.max(0, rawCost - 50);
+
+            // Map hour to bucket index
+            let index = -1;
+            if (hour >= 9 && hour < 11) index = 0;
+            else if (hour >= 11 && hour < 13) index = 1;
+            else if (hour >= 13 && hour < 15) index = 2;
+            else if (hour >= 15 && hour < 17) index = 3;
+            else if (hour >= 17 && hour < 19) index = 4;
+            else if (hour >= 19 && hour < 21) index = 5;
+            else if (hour >= 21) index = 6; 
+
+            if (index !== -1) {
+                buckets[index] += amt;
+            }
+        }
+    });
+
+    revenueChart.data.datasets[0].data = buckets;
     revenueChart.update();
 }
 
-// 6. Toast System
+function parseHour(timeStr) {
+    if(!timeStr) return 0;
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':');
+    
+    hours = parseInt(hours);
+    
+    if (hours === 12 && modifier === 'AM') hours = 0;
+    if (hours !== 12 && modifier === 'PM') hours += 12;
+    
+    return hours;
+}
+
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
