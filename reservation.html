@@ -10,6 +10,10 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         body { -webkit-tap-highlight-color: transparent; }
+        
+        /* Lightbox Animation */
+        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 flex justify-center items-center min-h-screen p-0 md:p-4">
@@ -26,7 +30,7 @@
         </div>
 
         <div class="h-64 w-full relative shrink-0">
-            <img id="res-image" src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80" class="w-full h-full object-cover">
+            <img id="res-image" src="" class="w-full h-full object-cover bg-slate-200">
             <div class="absolute bottom-0 w-full p-5 bg-gradient-to-t from-white via-white/90 to-transparent pt-12">
                 <h1 class="text-2xl font-bold text-slate-900 leading-tight" id="res-name">Loading...</h1>
                 <p class="text-sm text-slate-500 flex items-center gap-1 mt-1">
@@ -41,20 +45,19 @@
             <div class="mb-8">
                 <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block">How many people?</label>
                 <div class="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                    <button onclick="updatePax(-1)" class="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 active:scale-95 transition text-xl font-bold hover:text-teal-600">-</button>
+                    <button onclick="updatePax(-1)" class="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 text-xl font-bold hover:text-teal-600">-</button>
                     <div class="flex-1 text-center">
                         <span id="pax-display" class="text-2xl font-bold text-slate-900">2</span>
                         <span class="text-xs text-slate-400 block font-medium">Guests</span>
                     </div>
-                    <button onclick="updatePax(1)" class="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 active:scale-95 transition text-xl font-bold hover:text-teal-600">+</button>
+                    <button onclick="updatePax(1)" class="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 text-xl font-bold hover:text-teal-600">+</button>
                 </div>
             </div>
 
             <div class="mb-8">
                 <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block">Select Date</label>
                 <div class="relative">
-                    <input type="date" id="date-picker" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-teal-500 focus:border-teal-500 block p-4 font-bold outline-none">
-                    <i data-lucide="calendar" class="absolute right-4 top-4 text-slate-400 w-5 h-5 pointer-events-none"></i>
+                    <input type="date" id="date-picker" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-teal-500 block p-4 font-bold outline-none">
                 </div>
             </div>
 
@@ -63,16 +66,19 @@
                 <div id="slots-container" class="grid grid-cols-3 gap-3">
                     <p class="text-sm text-slate-400 col-span-3 italic">Select a date to view times</p>
                 </div>
-                <div id="availability-msg" class="mt-4 hidden p-3 rounded-xl bg-orange-50 border border-orange-100 text-orange-700 text-xs font-bold flex items-center gap-2">
-                    <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-                    <span>Slot Full. Est Wait: 2 Hours</span>
-                </div>
+                <div id="availability-msg" class="mt-4 hidden p-3 rounded-xl bg-orange-50 border border-orange-100 text-orange-700 text-xs font-bold text-center"></div>
+            </div>
+
+            <div id="gallery-section" class="mb-6 hidden">
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block">Menu Gallery</label>
+                <div id="gallery-container" class="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                    </div>
             </div>
 
             <div class="mb-8">
                 <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block">Pre-Order Food (Optional)</label>
                 <div id="menu-container" class="space-y-3 min-h-[50px]">
-                    <p class="text-sm text-slate-400 italic">Menu items will appear here.</p>
+                    <p class="text-sm text-slate-400 italic">Loading menu...</p>
                 </div>
             </div>
 
@@ -82,17 +88,12 @@
                         <h3 class="font-bold text-slate-900 text-lg">Reviews</h3>
                         <p class="text-xs text-slate-400" id="review-count">Loading...</p>
                     </div>
-                    <div class="flex flex-col items-end">
-                        <div class="flex items-center gap-1 text-yellow-400">
-                            <i data-lucide="star" class="w-4 h-4 fill-current"></i>
-                            <span class="text-lg font-bold text-slate-900" id="avg-rating">--</span>
-                        </div>
+                    <div class="flex items-center gap-1 text-yellow-400">
+                        <i data-lucide="star" class="w-4 h-4 fill-current"></i>
+                        <span class="text-lg font-bold text-slate-900" id="avg-rating">--</span>
                     </div>
                 </div>
-
-                <div id="reviews-container" class="space-y-4">
-                    <p class="text-sm text-slate-400 italic">No reviews yet.</p>
-                </div>
+                <div id="reviews-container" class="space-y-4"></div>
             </div>
 
         </div>
@@ -108,11 +109,18 @@
                     <span class="text-sm font-bold text-teal-600">RM <span id="total-cost-display">50.00</span></span>
                 </div>
             </div>
-            <button id="book-btn" disabled onclick="handleBooking()" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-black active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <button id="book-btn" disabled onclick="handleBooking()" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-black transition-all disabled:opacity-50">
                 Confirm Reservation
             </button>
         </div>
 
+    </div>
+
+    <div id="lightbox-modal" class="fixed inset-0 z-50 hidden bg-black/90 flex items-center justify-center p-4 animate-fade-in backdrop-blur-sm" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl scale-95 transition-transform duration-300">
+        <button class="absolute top-6 right-6 text-white/70 hover:text-white">
+            <i data-lucide="x" class="w-8 h-8"></i>
+        </button>
     </div>
 
     <script type="module" src="js/reservation.js"></script>

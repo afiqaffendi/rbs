@@ -2,7 +2,7 @@ import { auth, db } from './firebase-config.js';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// --- State ---
+// State
 let currentRestaurant = null;
 let restaurantId = new URLSearchParams(window.location.search).get('id');
 let selectedDate = null;
@@ -12,7 +12,7 @@ let userUid = null;
 let cart = {}; 
 let baseDeposit = 50.00;
 
-// --- Elements ---
+// Elements
 const paxDisplay = document.getElementById('pax-display');
 const dateInput = document.getElementById('date-picker');
 const slotsContainer = document.getElementById('slots-container');
@@ -21,18 +21,20 @@ const summaryText = document.getElementById('summary-text');
 const bookBtn = document.getElementById('book-btn');
 const resNameEl = document.getElementById('res-name');
 const resAddrEl = document.getElementById('res-address');
-// FIXED: Element for Image
 const resImageEl = document.getElementById('res-image');
-
 const menuContainer = document.getElementById('menu-container');
 const totalCostDisplay = document.getElementById('total-cost-display');
 
-// Review Elements
+// Gallery & Reviews
+const gallerySection = document.getElementById('gallery-section');
+const galleryContainer = document.getElementById('gallery-container');
+const lightboxModal = document.getElementById('lightbox-modal');
+const lightboxImg = document.getElementById('lightbox-img');
 const reviewsContainer = document.getElementById('reviews-container');
 const avgRatingEl = document.getElementById('avg-rating');
 const reviewCountEl = document.getElementById('review-count');
 
-// --- Initialization ---
+// Init
 document.addEventListener('DOMContentLoaded', () => {
     const today = new Date().toISOString().split('T')[0];
     if(dateInput) {
@@ -57,7 +59,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- Functions ---
 async function loadRestaurantData(id) {
     try {
         const docRef = doc(db, "restaurants", id);
@@ -66,21 +67,17 @@ async function loadRestaurantData(id) {
         if (docSnap.exists()) {
             currentRestaurant = docSnap.data();
             
-            // Text Updates
             if(resNameEl) resNameEl.innerText = currentRestaurant.name;
             if(resAddrEl) resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
-            
-            // FIXED: Image Update
             if(resImageEl) {
-                // If owner has no image, use a random food fallback
                 const fallbackImg = `https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80&random=${id}`;
                 resImageEl.src = currentRestaurant.imageUrl || fallbackImg;
             }
             
             if(selectedDate) renderTimeSlots();
             
-            // Load Menu
             loadMenu(currentRestaurant.menuItems || []); 
+            loadGallery(currentRestaurant.menuImages || []);
         } else {
             if(resNameEl) resNameEl.innerText = "Restaurant Not Found";
         }
@@ -88,6 +85,34 @@ async function loadRestaurantData(id) {
         console.error("Error loading restaurant:", error);
     }
 }
+
+// === NEW: GALLERY LOGIC ===
+function loadGallery(images) {
+    if (!images || images.length === 0) {
+        gallerySection.classList.add('hidden');
+        return;
+    }
+    
+    gallerySection.classList.remove('hidden');
+    galleryContainer.innerHTML = '';
+
+    images.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = "h-24 w-32 object-cover rounded-lg shrink-0 border border-slate-200 cursor-zoom-in hover:opacity-90 transition";
+        img.onclick = () => openLightbox(url);
+        galleryContainer.appendChild(img);
+    });
+}
+
+window.openLightbox = (url) => {
+    lightboxImg.src = url;
+    lightboxModal.classList.remove('hidden');
+};
+
+window.closeLightbox = () => {
+    lightboxModal.classList.add('hidden');
+};
 
 // === Reviews Logic ===
 async function loadReviews(restId) {
@@ -98,7 +123,7 @@ async function loadReviews(restId) {
         if (snapshot.empty) {
             if(reviewCountEl) reviewCountEl.innerText = "0 Reviews";
             if(avgRatingEl) avgRatingEl.innerText = "New";
-            if(reviewsContainer) reviewsContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No reviews yet. Be the first!</p>';
+            if(reviewsContainer) reviewsContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No reviews yet.</p>';
             return;
         }
 
@@ -108,48 +133,35 @@ async function loadReviews(restId) {
         snapshot.forEach(doc => {
             const data = doc.data();
             totalStars += data.rating;
-            
             let starsDisplay = '';
             for(let i=0; i<5; i++) {
                 starsDisplay += `<i data-lucide="star" class="w-3 h-3 ${i < data.rating ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'}"></i>`;
             }
-
             reviewsHTML += `
                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div class="flex items-center gap-1 mb-2">
-                        ${starsDisplay}
-                    </div>
-                    <p class="text-sm text-slate-700 leading-relaxed">"${data.comment}"</p>
-                    <p class="text-[10px] text-slate-400 mt-2 font-bold uppercase">Verified Customer</p>
-                </div>
-            `;
+                    <div class="flex items-center gap-1 mb-2">${starsDisplay}</div>
+                    <p class="text-sm text-slate-700">"${data.comment}"</p>
+                </div>`;
         });
 
         const avg = (totalStars / snapshot.size).toFixed(1);
-        
         if(avgRatingEl) avgRatingEl.innerText = avg;
         if(reviewCountEl) reviewCountEl.innerText = `${snapshot.size} Reviews`;
         if(reviewsContainer) {
             reviewsContainer.innerHTML = reviewsHTML;
             if(window.lucide) lucide.createIcons();
         }
-
-    } catch (error) {
-        console.error("Error loading reviews:", error);
-    }
+    } catch (e) { console.error(e); }
 }
 
 // === Menu Logic ===
 function loadMenu(items) {
     if(!menuContainer) return;
-
     if (!items || items.length === 0) {
         menuContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No pre-order menu available.</p>';
         return;
     }
-
     menuContainer.innerHTML = ''; 
-    
     items.forEach((item, index) => {
         const itemId = `item-${index}`;
         const card = document.createElement('div');
@@ -187,7 +199,7 @@ function calculateTotal() {
     if(totalCostDisplay) totalCostDisplay.innerText = total.toFixed(2);
 }
 
-// === Time Slots & Booking ===
+// === Booking & Time Logic ===
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
         pax += change;
@@ -205,8 +217,8 @@ if(dateInput) {
         if(bookBtn) {
             bookBtn.disabled = true;
             bookBtn.innerText = "Select a Time";
-            bookBtn.classList.remove('bg-green-600', 'bg-red-500', 'bg-slate-300', 'text-slate-500', 'bg-orange-500');
-            bookBtn.classList.add('bg-slate-900');
+            bookBtn.classList.remove('bg-slate-900');
+            bookBtn.classList.add('bg-slate-300');
         }
     });
 }
@@ -214,10 +226,8 @@ if(dateInput) {
 function renderTimeSlots() {
     if(slotsContainer) slotsContainer.innerHTML = '';
     if(availabilityMsg) availabilityMsg.classList.add('hidden');
-
     if (!selectedDate || !currentRestaurant) return;
 
-    // Robust Time Parser
     const generateSlots = (hours) => {
         const parseTime = (t) => {
             t = t.trim().toUpperCase(); 
@@ -241,11 +251,9 @@ function renderTimeSlots() {
         let separator = hours.includes('-') ? '-' : 'to';
         const parts = hours.split(separator);
         if (parts.length !== 2) return []; 
-
         let start = parseTime(parts[0]);
         let end = parseTime(parts[1]);
         if(end <= start) end += 1440; 
-
         let slots = [];
         while(start + 120 <= end) { 
             let displayStart = start % 1440;
@@ -263,19 +271,14 @@ function renderTimeSlots() {
 
     slots.forEach(time => {
         const btn = document.createElement('button');
-        btn.className = `
-            py-3 px-2 rounded-xl text-sm font-bold border transition-all relative
-            ${selectedTime === time 
-                ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-teal-500 ring-offset-2' 
-                : 'bg-white text-slate-600 border-slate-200 hover:border-teal-500 hover:text-teal-600'}
-        `;
+        btn.className = `py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ${selectedTime === time ? 'bg-slate-900 text-white shadow-md ring-2 ring-teal-500' : 'bg-white text-slate-600 hover:border-teal-500'}`;
         btn.innerText = time;
         btn.onclick = () => {
             selectedTime = time;
             renderTimeSlots();
             checkAvailability(time);
         };
-        if(slotsContainer) slotsContainer.appendChild(btn);
+        slotsContainer.appendChild(btn);
     });
 }
 
@@ -285,7 +288,6 @@ async function checkAvailability(timeSlot) {
         bookBtn.disabled = true;
         bookBtn.innerText = "Checking...";
     }
-    
     try {
         const q = query(
             collection(db, "bookings"),
@@ -294,33 +296,27 @@ async function checkAvailability(timeSlot) {
             where("timeSlot", "==", timeSlot),
             where("status", "in", ["confirmed", "pending_payment", "pending_verification"])
         );
-
         const snapshot = await getDocs(q);
         let occupiedPax = 0;
         snapshot.forEach(doc => occupiedPax += doc.data().pax);
-
         const capacity = currentRestaurant.capacity || 50;
         const remaining = capacity - occupiedPax;
 
         if (remaining <= 0) {
             bookBtn.innerText = "Slot Full";
+            bookBtn.classList.remove('bg-slate-900');
             bookBtn.classList.add('bg-slate-300');
             showMsg("Slot Fully Booked", "text-red-500");
         } else if (pax > remaining) {
             bookBtn.innerText = "Insufficient Seats";
-            bookBtn.classList.add('bg-orange-500');
             showMsg(`Only ${remaining} seats left`, "text-orange-600");
         } else {
             bookBtn.disabled = false;
             bookBtn.innerText = "Confirm Reservation";
-            bookBtn.classList.remove('bg-slate-300', 'bg-orange-500');
             bookBtn.classList.add('bg-slate-900');
             showMsg(`Available (${remaining} left)`, "text-green-600");
         }
-
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function showMsg(text, color) {
@@ -332,16 +328,11 @@ function showMsg(text, color) {
 }
 
 function updateSummary() {
-    if (summaryText) {
-        summaryText.innerText = (selectedDate && selectedTime) ? `${selectedDate} @ ${selectedTime}` : "-- / --";
-    }
+    if (summaryText) summaryText.innerText = (selectedDate && selectedTime) ? `${selectedDate} @ ${selectedTime}` : "-- / --";
 }
 
 window.handleBooking = async () => {
-    if(!userUid) {
-        alert("Please login first.");
-        return;
-    }
+    if(!userUid) { alert("Please login first."); return; }
     
     const finalItems = Object.values(cart).filter(i => i.qty > 0);
     let menuTotal = 0;
@@ -367,16 +358,11 @@ window.handleBooking = async () => {
             status: "pending_payment", 
             createdAt: Timestamp.now()
         };
-        
         const docRef = await addDoc(collection(db, "bookings"), bookingData);
         window.location.href = `payment.html?id=${docRef.id}`; 
-        
     } catch (error) {
         console.error("Booking Error:", error);
         alert("Booking failed: " + error.message);
-        if(bookBtn) {
-            bookBtn.disabled = false;
-            bookBtn.innerText = "Try Again";
-        }
+        if(bookBtn) { bookBtn.disabled = false; bookBtn.innerText = "Try Again"; }
     }
 };

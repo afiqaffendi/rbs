@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Menu - DTEBS</title>
+    <title>Menu Manager - DTEBS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -18,24 +18,43 @@
         </div>
     </nav>
 
-    <div class="container mx-auto p-4 md:p-8 max-w-4xl grid md:grid-cols-3 gap-6">
+    <div class="container mx-auto p-4 md:p-8 max-w-2xl">
         
-        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 h-fit">
-            <h2 class="text-lg font-bold text-slate-900 mb-4">Add Item</h2>
-            <form id="menu-form" class="space-y-4">
-                <input type="text" id="item-name" placeholder="Item Name (e.g. Nasi Lemak)" required class="w-full p-3 border rounded-xl bg-slate-50 outline-none">
-                <input type="number" id="item-price" placeholder="Price (RM)" step="0.01" required class="w-full p-3 border rounded-xl bg-slate-50 outline-none">
-                <button type="submit" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-black transition">Add to Menu</button>
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mb-6">
+            <h2 class="text-lg font-bold text-slate-900 mb-4">Add Food Item</h2>
+            <form id="menu-form" class="flex flex-col md:flex-row gap-3">
+                <input type="text" id="item-name" placeholder="Item Name (e.g. Nasi Lemak)" required class="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-teal-500">
+                <input type="number" id="item-price" placeholder="Price (RM)" step="0.01" required class="w-full md:w-32 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-teal-500">
+                <button type="submit" class="bg-slate-900 text-white font-bold py-3 px-6 rounded-xl hover:bg-black transition">Add</button>
             </form>
         </div>
 
-        <div class="md:col-span-2 space-y-4" id="menu-list">
-            <p class="text-slate-400">Loading menu items...</p>
+        <div id="menu-list" class="space-y-3 mb-8">
+            <p class="text-center text-slate-400 py-4">Loading items...</p>
+        </div>
+
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-slate-900 mb-2">Menu Gallery</h2>
+            <p class="text-xs text-slate-500 mb-4">Paste links to images of your physical menu, flyers, or food photos.</p>
+            
+            <form id="image-form" class="flex gap-3 mb-6">
+                <input type="url" id="img-url" placeholder="https://example.com/menu-image.jpg" required class="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-teal-500 text-sm">
+                <button type="submit" class="bg-teal-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-teal-700 transition flex items-center gap-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Add
+                </button>
+            </form>
+
+            <div id="gallery-list" class="grid grid-cols-3 gap-3">
+                </div>
         </div>
 
     </div>
 
     <script type="module" src="js/owner-menu.js"></script>
-    <script>lucide.createIcons();</script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if(window.lucide) lucide.createIcons();
+        });
+    </script>
 </body>
 </html>
