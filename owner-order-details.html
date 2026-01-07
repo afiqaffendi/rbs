@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Details - DTEBS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-gray-50 text-slate-900 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-3xl w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+        
+        <div class="bg-slate-900 p-6 flex justify-between items-center text-white">
+            <div>
+                <a href="owner-dashboard.html" class="text-slate-400 hover:text-white text-sm font-medium flex items-center gap-1 mb-1 transition">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Dashboard
+                </a>
+                <h1 class="text-2xl font-bold">Order Details</h1>
+                <p class="text-slate-400 text-xs mt-1" id="order-id">Loading ID...</p>
+            </div>
+            <div id="status-badge" class="px-4 py-2 bg-white/10 rounded-lg text-sm font-bold backdrop-blur-sm">
+                Loading...
+            </div>
+        </div>
+
+        <div class="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Customer Information</h3>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
+                            <i data-lucide="user" class="w-6 h-6 text-slate-400"></i>
+                        </div>
+                        <div>
+                            <p class="text-lg font-bold text-slate-900" id="customer-name">--</p>
+                            <p class="text-sm text-slate-500">Valued Guest</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-sm text-slate-500">Date</span>
+                        <span class="text-sm font-bold text-slate-900" id="booking-date">--</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-slate-500">Time Slot</span>
+                        <span class="text-sm font-bold text-slate-900" id="booking-time">--</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-slate-500">Table Assigned</span>
+                        <span class="text-sm font-bold text-teal-600" id="table-info">--</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-slate-500">Total Pax</span>
+                        <span class="text-sm font-bold text-slate-900" id="pax-count">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Order Summary</h3>
+                
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-4 h-64 overflow-y-auto" id="menu-items-container">
+                    <p class="text-sm text-slate-400 italic text-center py-10">Loading items...</p>
+                </div>
+
+                <div class="space-y-2 border-t border-gray-100 pt-4">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500">Food Total</span>
+                        <span class="font-bold text-slate-900" id="food-total">RM 0.00</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500">Booking Deposit</span>
+                        <span class="font-bold text-slate-900">RM 50.00</span>
+                    </div>
+                    <div class="flex justify-between text-lg font-bold text-teal-700 pt-2 border-t border-gray-100 mt-2">
+                        <span>Grand Total</span>
+                        <span id="grand-total">RM 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-50 p-6 border-t border-gray-100 flex justify-end gap-3">
+            <button id="btn-cancel" onclick="updateStatus('cancelled')" class="px-5 py-2.5 text-red-600 font-bold text-sm bg-white border border-gray-200 rounded-xl hover:bg-red-50 hover:border-red-200 transition">
+                Cancel Booking
+            </button>
+            <button id="btn-complete" onclick="updateStatus('completed')" class="px-5 py-2.5 text-white font-bold text-sm bg-slate-900 rounded-xl hover:bg-black shadow-lg transition flex items-center gap-2">
+                <i data-lucide="check-circle" class="w-4 h-4"></i> Mark Completed
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module" src="js/owner-order-details.js"></script>
+</body>
+</html>

@@ -124,7 +124,7 @@ function setupRealtimeListener(dateFilter) {
     });
 }
 
-// 3. Render Table
+// 3. Render Table (UPDATED FOR CLICKABLE ROWS)
 function renderTable(data) {
     bookingsList.innerHTML = '';
     
@@ -137,8 +137,15 @@ function renderTable(data) {
     data.forEach(item => {
         const row = document.createElement('tr');
         const isDimmed = item.status === 'cancelled' || item.status === 'rejected';
-        row.className = `border-b border-gray-50 last:border-none transition ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-gray-50'}`;
         
+        // NEW: Add cursor-pointer and hover effect
+        row.className = `border-b border-gray-50 last:border-none transition cursor-pointer ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'}`;
+        
+        // NEW: Click event to go to details page
+        row.onclick = () => {
+            window.location.href = `owner-order-details.html?id=${item.id}`;
+        };
+
         let badge = '';
         if(item.status === 'confirmed') badge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Active</span>`;
         else if(item.status === 'completed') badge = `<span class="bg-slate-900 text-white px-2 py-1 rounded-full text-xs font-bold">Completed</span>`;
@@ -147,12 +154,13 @@ function renderTable(data) {
 
         let actionButtons = '-';
         if (item.status === 'confirmed') {
+            // NEW: Added event.stopPropagation() to prevent row click when clicking buttons
             actionButtons = `
                 <div class="flex justify-center gap-2">
-                    <button onclick="updateStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center" title="Mark Completed">
+                    <button onclick="event.stopPropagation(); updateStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center" title="Mark Completed">
                         <i data-lucide="check" class="w-4 h-4"></i>
                     </button>
-                    <button onclick="updateStatus('${item.id}', 'cancelled')" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center" title="No Show / Cancel">
+                    <button onclick="event.stopPropagation(); updateStatus('${item.id}', 'cancelled')" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center" title="No Show / Cancel">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                 </div>
@@ -168,8 +176,10 @@ function renderTable(data) {
                         ${item.pax}
                     </div>
                     <div>
-                        <p class="font-bold text-slate-900">Guest</p>
-                        <p class="text-xs text-slate-400">...${item.id.slice(-4)}</p>
+                        <p class="font-bold text-slate-900">${item.customerName || 'Guest'}</p>
+                        <p class="text-xs font-bold text-teal-600">
+                            ${item.assignedTableSize ? 'Table: ' + item.assignedTableSize.replace('pax','') : '... ' + item.id.slice(-4)}
+                        </p>
                     </div>
                 </div>
             </td>
