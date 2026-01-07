@@ -1,6 +1,6 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
@@ -12,7 +12,7 @@ const statRevenue = document.getElementById('stat-revenue');
 
 // State
 let currentListener = null;
-let revenueChart = null; // Chart instance
+let revenueChart = null; 
 
 // 1. Auth Check & Init
 onAuthStateChanged(auth, async (user) => {
@@ -26,23 +26,24 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// 2. Real-Time Logic (Auto-Filter: CONFIRMED ONLY)
+// 2. Real-Time Logic (Day Overview)
 function setupRealtimeListener(dateFilter) {
     if (currentListener) currentListener(); // Unsubscribe old
 
-    bookingsList.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-slate-400 animate-pulse">Loading confirmed bookings...</td></tr>';
+    bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
 
-    // QUERY: Only show 'confirmed' bookings for the selected date
+    // QUERY: Fetch ALL bookings for this date (Removed status filter)
+    // This ensures stats are accurate even after marking as 'completed'
     const q = query(
         collection(db, "bookings"), 
-        where("bookingDate", "==", dateFilter),
-        where("status", "==", "confirmed") 
+        where("bookingDate", "==", dateFilter)
     );
 
     currentListener = onSnapshot(q, (snapshot) => {
         let bookings = [];
         let totalGuests = 0;
         let revenue = 0;
+        let confirmedCount = 0;
 
         if (snapshot.empty) {
             renderTable([]);
@@ -54,16 +55,22 @@ function setupRealtimeListener(dateFilter) {
             const data = doc.data();
             bookings.push({ id: doc.id, ...data });
             
-            // Stats Calculation
-            if (data.pax) totalGuests += parseInt(data.pax);
-            if (data.totalCost) revenue += parseFloat(data.totalCost);
+            // Stats: Count confirmed AND completed (money earned)
+            if (['confirmed', 'completed'].includes(data.status)) {
+                if (data.pax) totalGuests += parseInt(data.pax);
+                if (data.totalCost) revenue += parseFloat(data.totalCost);
+                confirmedCount++;
+            }
         });
 
-        // Sort by Time (Newest First)
-        bookings.sort((a, b) => b.createdAt - a.createdAt);
+        // Sort: Put 'confirmed' (Active) at top, then 'completed', then others
+        bookings.sort((a, b) => {
+            const statusOrder = { 'confirmed': 1, 'completed': 2, 'pending_payment': 3, 'cancelled': 4 };
+            return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+        });
         
         renderTable(bookings);
-        updateStats(bookings.length, totalGuests, revenue);
+        updateStats(confirmedCount, totalGuests, revenue);
         updateChart(bookings); 
 
     }, (error) => {
@@ -72,7 +79,7 @@ function setupRealtimeListener(dateFilter) {
     });
 }
 
-// 3. Render Table (No Verify Button)
+// 3. Render Table with Actions
 function renderTable(data) {
     bookingsList.innerHTML = '';
     
@@ -84,37 +91,60 @@ function renderTable(data) {
 
     data.forEach(item => {
         const row = document.createElement('tr');
-        row.className = "hover:bg-gray-50 transition border-b border-gray-50 last:border-none group";
+        // Dim the row if it's not active
+        const isDimmed = item.status === 'cancelled' || item.status === 'rejected';
+        row.className = `border-b border-gray-50 last:border-none transition ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-gray-50'}`;
         
+        // Determine Status Badge
+        let badge = '';
+        if(item.status === 'confirmed') badge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Active</span>`;
+        else if(item.status === 'completed') badge = `<span class="bg-slate-900 text-white px-2 py-1 rounded-full text-xs font-bold">Completed</span>`;
+        else if(item.status === 'cancelled') badge = `<span class="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs font-bold">Cancelled</span>`;
+        else badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-bold">${item.status}</span>`;
+
+        // Action Buttons Logic
+        let actionButtons = '-';
+        if (item.status === 'confirmed') {
+            actionButtons = `
+                <div class="flex justify-center gap-2">
+                    <button onclick="updateStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center" title="Mark Completed">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="updateStatus('${item.id}', 'cancelled')" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center" title="No Show / Cancel">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `;
+        } else if (item.status === 'completed') {
+             actionButtons = `<span class="text-xs font-bold text-green-600 flex justify-center items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Done</span>`;
+        }
+
         row.innerHTML = `
             <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
                         ${item.pax}
                     </div>
                     <div>
                         <p class="font-bold text-slate-900">Guest</p>
-                        <p class="text-xs text-slate-400">ID: ...${item.id.slice(-4)}</p>
+                        <p class="text-xs text-slate-400">...${item.id.slice(-4)}</p>
                     </div>
                 </div>
             </td>
-            <td class="px-6 py-4">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    <i data-lucide="check-circle" class="w-3 h-3 mr-1"></i>
-                    Paid (ToyyibPay)
-                </span>
-            </td>
+            <td class="px-6 py-4">${badge}</td>
             <td class="px-6 py-4">
                 <p class="text-sm font-medium text-slate-700">${item.timeSlot}</p>
-                <p class="text-xs text-slate-400">${item.bookingDate}</p>
             </td>
             <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">
                 RM ${parseFloat(item.totalCost || 0).toFixed(2)}
             </td>
             <td class="px-6 py-4 text-right">
                 <span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded select-all">
-                    ${item.billCode || item.paymentRef || 'N/A'}
+                    ${item.billCode || 'N/A'}
                 </span>
+            </td>
+            <td class="px-6 py-4">
+                ${actionButtons}
             </td>
         `;
         bookingsList.appendChild(row);
@@ -123,16 +153,29 @@ function renderTable(data) {
     if(window.lucide) lucide.createIcons();
 }
 
+// 4. Handle Status Updates (Global Function)
+window.updateStatus = async (id, newStatus) => {
+    if(!confirm(`Mark this booking as ${newStatus}?`)) return;
+
+    try {
+        const docRef = doc(db, "bookings", id);
+        await updateDoc(docRef, { status: newStatus });
+        showToast(`Booking marked as ${newStatus}`);
+    } catch (error) {
+        console.error(error);
+        showToast("Action failed", "error");
+    }
+};
+
 function updateStats(total, guests, revenue) {
     statToday.innerText = total;
     statGuests.innerText = guests;
     statRevenue.innerText = `RM ${revenue.toFixed(2)}`;
 }
 
-// 4. Analytics Chart
+// 5. Analytics Chart
 function initChart() {
     const ctx = document.getElementById('revenueChart').getContext('2d');
-    
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, 'rgba(20, 184, 166, 0.2)'); 
     gradient.addColorStop(1, 'rgba(20, 184, 166, 0)');
@@ -143,12 +186,11 @@ function initChart() {
             labels: ['9 AM', '11 AM', '1 PM', '3 PM', '5 PM', '7 PM', '9 PM'],
             datasets: [{
                 label: 'Revenue (RM)',
-                data: [0, 0, 0, 0, 0, 0, 0],
+                data: [0,0,0,0,0,0,0],
                 borderColor: '#0d9488', 
                 backgroundColor: gradient,
                 borderWidth: 2,
                 pointBackgroundColor: '#fff',
-                pointBorderColor: '#0d9488',
                 tension: 0.4, 
                 fill: true
             }]
@@ -165,14 +207,18 @@ function initChart() {
     });
 }
 
-function updateChart(data) {
-    // Basic visualization logic (Simulated for demo)
-    const simulatedData = [10, 30, 45, 20, 60, 80, 40].map(x => x * (data.length > 0 ? 1 : 0));
-    revenueChart.data.datasets[0].data = simulatedData;
+function updateChart(bookings) {
+    // Simple logic: Sum revenue per 2-hour block (Simulated distribution for now)
+    // You can make this smarter later
+    const dataPoints = [0,0,0,0,0,0,0]; 
+    if(bookings.length > 0) {
+        dataPoints.fill(10); // Dummy visual for now
+    }
+    revenueChart.data.datasets[0].data = dataPoints;
     revenueChart.update();
 }
 
-// 5. Toast System
+// 6. Toast System
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -192,7 +238,7 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// 6. Event Listeners
+// Event Listeners
 filterDateInput.addEventListener('change', (e) => setupRealtimeListener(e.target.value));
 
 document.getElementById('btn-refresh').onclick = () => {
@@ -200,7 +246,6 @@ document.getElementById('btn-refresh').onclick = () => {
     showToast("Dashboard Refreshed");
 };
 
-// Logout
 document.getElementById('logout-btn').onclick = () => {
     signOut(auth).then(() => window.location.href = 'index.html');
 };

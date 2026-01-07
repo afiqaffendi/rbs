@@ -9,6 +9,8 @@ let selectedDate = null;
 let selectedTime = null;
 let pax = 2;
 let userUid = null;
+let cart = {}; 
+let baseDeposit = 50.00;
 
 // --- Elements ---
 const paxDisplay = document.getElementById('pax-display');
@@ -19,17 +21,21 @@ const summaryText = document.getElementById('summary-text');
 const bookBtn = document.getElementById('book-btn');
 const resNameEl = document.getElementById('res-name');
 const resAddrEl = document.getElementById('res-address');
+const menuContainer = document.getElementById('menu-container');
+const totalCostDisplay = document.getElementById('total-cost-display');
+
+// NEW: Review Elements
+const reviewsContainer = document.getElementById('reviews-container');
+const avgRatingEl = document.getElementById('avg-rating');
+const reviewCountEl = document.getElementById('review-count');
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
-    if(window.lucide) lucide.createIcons();
-    
-    // UX IMPROVEMENT: Auto-set today's date
     const today = new Date().toISOString().split('T')[0];
     if(dateInput) {
         dateInput.setAttribute('min', today);
-        dateInput.value = today; // Auto-select today
-        selectedDate = today;    // Sync state
+        dateInput.value = today;
+        selectedDate = today;
     }
 });
 
@@ -40,6 +46,7 @@ onAuthStateChanged(auth, async (user) => {
         userUid = user.uid;
         if (restaurantId) {
             await loadRestaurantData(restaurantId);
+            loadReviews(restaurantId); // NEW: Fetch reviews
         } else {
             alert("No restaurant selected!");
             window.location.href = 'customer-home.html';
@@ -58,8 +65,9 @@ async function loadRestaurantData(id) {
             if(resNameEl) resNameEl.innerText = currentRestaurant.name;
             if(resAddrEl) resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
             
-            // Re-render slots if date is already selected
             if(selectedDate) renderTimeSlots();
+            
+            loadMenu(currentRestaurant.menuItems || []); 
         } else {
             if(resNameEl) resNameEl.innerText = "Restaurant Not Found";
         }
@@ -68,11 +76,114 @@ async function loadRestaurantData(id) {
     }
 }
 
+// === NEW: Load Reviews ===
+async function loadReviews(restId) {
+    try {
+        // Query reviews for this restaurant
+        const q = query(collection(db, "reviews"), where("restaurantId", "==", restId));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            if(reviewCountEl) reviewCountEl.innerText = "0 Reviews";
+            if(avgRatingEl) avgRatingEl.innerText = "New";
+            if(reviewsContainer) reviewsContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No reviews yet. Be the first!</p>';
+            return;
+        }
+
+        let totalStars = 0;
+        let reviewsHTML = '';
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            totalStars += data.rating;
+            
+            // Create Star Icons string
+            let starsDisplay = '';
+            for(let i=0; i<5; i++) {
+                starsDisplay += `<i data-lucide="star" class="w-3 h-3 ${i < data.rating ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'}"></i>`;
+            }
+
+            reviewsHTML += `
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <div class="flex items-center gap-1 mb-2">
+                        ${starsDisplay}
+                    </div>
+                    <p class="text-sm text-slate-700 leading-relaxed">"${data.comment}"</p>
+                    <p class="text-[10px] text-slate-400 mt-2 font-bold uppercase">Verified Customer</p>
+                </div>
+            `;
+        });
+
+        // Calculate Average
+        const avg = (totalStars / snapshot.size).toFixed(1);
+        
+        // Update UI
+        if(avgRatingEl) avgRatingEl.innerText = avg;
+        if(reviewCountEl) reviewCountEl.innerText = `${snapshot.size} Reviews`;
+        if(reviewsContainer) {
+            reviewsContainer.innerHTML = reviewsHTML;
+            // Re-render icons for the new HTML
+            if(window.lucide) lucide.createIcons();
+        }
+
+    } catch (error) {
+        console.error("Error loading reviews:", error);
+    }
+}
+
+// === Menu Loading Logic ===
+function loadMenu(items) {
+    if(!menuContainer) return;
+
+    if (!items || items.length === 0) {
+        menuContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No pre-order menu available.</p>';
+        return;
+    }
+
+    menuContainer.innerHTML = ''; 
+    
+    items.forEach((item, index) => {
+        const itemId = `item-${index}`;
+        const card = document.createElement('div');
+        card.className = "flex justify-between items-center bg-white p-3 rounded-lg border border-slate-100 shadow-sm";
+        card.innerHTML = `
+            <div>
+                <h4 class="font-bold text-slate-800 text-sm">${item.name}</h4>
+                <p class="text-sm font-semibold text-teal-600 mt-1">RM ${parseFloat(item.price).toFixed(2)}</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button onclick="updateCart('${itemId}', '${item.name}', ${item.price}, -1)" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">-</button>
+                <span id="qty-${itemId}" class="font-bold text-slate-800 w-4 text-center">0</span>
+                <button onclick="updateCart('${itemId}', '${item.name}', ${item.price}, 1)" class="w-8 h-8 rounded-full bg-slate-900 text-white font-bold hover:bg-slate-800">+</button>
+            </div>
+        `;
+        menuContainer.appendChild(card);
+    });
+}
+
+window.updateCart = (id, name, price, change) => {
+    if (!cart[id]) cart[id] = { name, price, qty: 0 };
+    cart[id].qty += change;
+    if (cart[id].qty < 0) cart[id].qty = 0;
+    const qtyEl = document.getElementById(`qty-${id}`);
+    if(qtyEl) qtyEl.innerText = cart[id].qty;
+    calculateTotal();
+};
+
+function calculateTotal() {
+    let menuTotal = 0;
+    Object.values(cart).forEach(item => {
+        menuTotal += item.qty * item.price;
+    });
+    const total = baseDeposit + menuTotal;
+    if(totalCostDisplay) totalCostDisplay.innerText = total.toFixed(2);
+}
+
+// === Time Slots & Booking ===
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
         pax += change;
         if(paxDisplay) paxDisplay.innerText = pax;
-        // UX IMPROVEMENT: Re-check availability immediately if user changes group size
         if(selectedTime) checkAvailability(selectedTime);
     }
 };
@@ -83,7 +194,6 @@ if(dateInput) {
         selectedTime = null; 
         renderTimeSlots();
         updateSummary();
-        // Reset button state
         if(bookBtn) {
             bookBtn.disabled = true;
             bookBtn.innerText = "Select a Time";
@@ -93,48 +203,59 @@ if(dateInput) {
     });
 }
 
-function generateTimeSlots(operatingHours) {
-    const parseTime = (t) => {
-        const [time, modifier] = t.split(' ');
-        let [hours, minutes] = time.split(':').map(Number);
-        if (hours === 12) hours = 0;
-        if (modifier === 'PM') hours += 12;
-        return hours * 60 + minutes;
-    };
-
-    const formatTime = (m) => {
-        let h = Math.floor(m / 60);
-        let mm = m % 60;
-        let amp = h >= 12 ? 'PM' : 'AM';
-        h = h % 12 || 12;
-        return `${h}:${mm.toString().padStart(2, '0')} ${amp}`;
-    };
-
-    if(!operatingHours) return [];
-    
-    const [startStr, endStr] = operatingHours.split(' - ');
-    let startMin = parseTime(startStr);
-    let endMin = parseTime(endStr);
-    
-    let slots = [];
-    while (startMin + 120 <= endMin) {
-        slots.push(formatTime(startMin));
-        startMin += 60; 
-    }
-    return slots;
-}
-
 function renderTimeSlots() {
     if(slotsContainer) slotsContainer.innerHTML = '';
     if(availabilityMsg) availabilityMsg.classList.add('hidden');
 
     if (!selectedDate || !currentRestaurant) return;
 
-    const slots = generateTimeSlots(currentRestaurant.operatingHours);
+    // Smart Time Parser
+    const generateSlots = (hours) => {
+        const parseTime = (t) => {
+            t = t.trim().toUpperCase(); 
+            let hours = 0, minutes = 0;
+            let modifier = 'AM';
+            if (t.includes('PM')) modifier = 'PM';
+            if (t.includes('AM')) modifier = 'AM';
+            const cleanTime = t.replace(/(AM|PM)/g, '').trim();
+            if (cleanTime.includes(':')) {
+                const parts = cleanTime.split(':');
+                hours = parseInt(parts[0]);
+                minutes = parseInt(parts[1]);
+            } else {
+                hours = parseInt(cleanTime);
+            }
+            if (hours === 12) hours = 0;
+            if (modifier === 'PM') hours += 12;
+            return hours * 60 + minutes;
+        };
+        
+        // Handle separator ("-" or "TO")
+        let separator = hours.includes('-') ? '-' : 'to';
+        const parts = hours.split(separator);
+        if (parts.length !== 2) return []; 
+
+        let start = parseTime(parts[0]);
+        let end = parseTime(parts[1]);
+        if(end <= start) end += 1440; 
+
+        let slots = [];
+        while(start + 120 <= end) { 
+            let displayStart = start % 1440;
+            let h = Math.floor(displayStart/60);
+            let mm = displayStart%60;
+            let amp = h>=12 ? 'PM' : 'AM';
+            h = h%12 || 12;
+            slots.push(`${h}:${mm.toString().padStart(2,'0')} ${amp}`);
+            start += 60;
+        }
+        return slots;
+    };
+
+    const slots = generateSlots(currentRestaurant.operatingHours || "10:00 AM - 10:00 PM");
 
     slots.forEach(time => {
         const btn = document.createElement('button');
-        // UX IMPROVEMENT: Added ring effect for selected state
         btn.className = `
             py-3 px-2 rounded-xl text-sm font-bold border transition-all relative
             ${selectedTime === time 
@@ -142,40 +263,28 @@ function renderTimeSlots() {
                 : 'bg-white text-slate-600 border-slate-200 hover:border-teal-500 hover:text-teal-600'}
         `;
         btn.innerText = time;
-        
         btn.onclick = () => {
             selectedTime = time;
-            renderTimeSlots(); // Re-render to show active state
+            renderTimeSlots();
             checkAvailability(time);
         };
         if(slotsContainer) slotsContainer.appendChild(btn);
     });
 }
 
-// --- PHASE 2: Enhanced Availability Check (SMART MESSAGES) ---
 async function checkAvailability(timeSlot) {
     updateSummary();
-    
     if(bookBtn) {
         bookBtn.disabled = true;
-        bookBtn.innerText = "Checking Availability...";
-        // Reset styles
-        bookBtn.classList.remove('bg-red-500', 'bg-slate-300', 'text-slate-500', 'bg-green-600', 'bg-orange-500');
-        bookBtn.classList.add('bg-slate-900');
+        bookBtn.innerText = "Checking...";
     }
     
-    if(availabilityMsg) {
-        availabilityMsg.classList.add('hidden');
-        availabilityMsg.className = "text-center text-xs font-bold mt-2 hidden"; // Reset classes
-    }
-
     try {
         const q = query(
             collection(db, "bookings"),
             where("restaurantId", "==", restaurantId),
             where("bookingDate", "==", selectedDate),
             where("timeSlot", "==", timeSlot),
-            // Check ALL occupied slots, even those pending payment
             where("status", "in", ["confirmed", "pending_payment", "pending_verification"])
         );
 
@@ -186,72 +295,52 @@ async function checkAvailability(timeSlot) {
         const capacity = currentRestaurant.capacity || 50;
         const remaining = capacity - occupiedPax;
 
-        // LOGIC: Check scenarios
         if (remaining <= 0) {
-            // SCENARIO A: Full
-            if(bookBtn) {
-                bookBtn.innerText = "Slot Full";
-                bookBtn.classList.remove('bg-slate-900');
-                bookBtn.classList.add('bg-slate-300', 'text-slate-500'); // Visual disabled style
-            }
-            showAvailabilityMsg(`Sorry, this slot is fully booked.`, "text-red-500");
-
+            bookBtn.innerText = "Slot Full";
+            bookBtn.classList.add('bg-slate-300');
+            showMsg("Slot Fully Booked", "text-red-500");
         } else if (pax > remaining) {
-            // SCENARIO B: Available, but not for this group size
-            if(bookBtn) {
-                bookBtn.innerText = "Insufficient Seats";
-                bookBtn.classList.remove('bg-slate-900');
-                bookBtn.classList.add('bg-orange-500', 'text-white');
-            }
-            showAvailabilityMsg(`Only ${remaining} seats left. Please reduce pax.`, "text-orange-600");
-
+            bookBtn.innerText = "Insufficient Seats";
+            bookBtn.classList.add('bg-orange-500');
+            showMsg(`Only ${remaining} seats left`, "text-orange-600");
         } else {
-            // SCENARIO C: Available
-            if(bookBtn) {
-                bookBtn.disabled = false;
-                bookBtn.innerText = "Confirm Reservation";
-                bookBtn.classList.remove('bg-slate-300', 'text-slate-500', 'bg-orange-500');
-                bookBtn.classList.add('bg-slate-900'); // Or your primary color
-            }
-            
-            // Show "Hurry" message if low availability
-            if (remaining < 10) {
-                showAvailabilityMsg(`Hurry! Only ${remaining} seats remaining.`, "text-orange-600");
-            } else {
-                showAvailabilityMsg(`Available (${remaining} seats left)`, "text-green-600");
-            }
+            bookBtn.disabled = false;
+            bookBtn.innerText = "Confirm Reservation";
+            bookBtn.classList.remove('bg-slate-300', 'bg-orange-500');
+            bookBtn.classList.add('bg-slate-900');
+            showMsg(`Available (${remaining} left)`, "text-green-600");
         }
 
     } catch (e) {
         console.error(e);
-        if(bookBtn) bookBtn.innerText = "Error Checking";
     }
 }
 
-function showAvailabilityMsg(text, colorClass) {
+function showMsg(text, color) {
     if(availabilityMsg) {
         availabilityMsg.innerText = text;
-        availabilityMsg.className = `text-center text-xs font-bold mt-2 ${colorClass}`;
+        availabilityMsg.className = `text-center text-xs font-bold mt-2 ${color}`;
         availabilityMsg.classList.remove('hidden');
     }
 }
 
 function updateSummary() {
     if (summaryText) {
-        if (selectedDate && selectedTime) {
-            summaryText.innerText = `${selectedDate} @ ${selectedTime}`;
-        } else {
-            summaryText.innerText = "-- / --";
-        }
+        summaryText.innerText = (selectedDate && selectedTime) ? `${selectedDate} @ ${selectedTime}` : "-- / --";
     }
 }
 
-// === Phase 1 Logic: Save directly to Firestore ===
+// === MAIN BOOKING FUNCTION ===
 window.handleBooking = async () => {
     if(!userUid) {
         alert("Please login first.");
         return;
     }
+    
+    const finalItems = Object.values(cart).filter(i => i.qty > 0);
+    let menuTotal = 0;
+    finalItems.forEach(i => menuTotal += (i.qty * i.price));
+    const finalTotal = baseDeposit + menuTotal;
 
     if(bookBtn) {
         bookBtn.disabled = true;
@@ -266,21 +355,19 @@ window.handleBooking = async () => {
             bookingDate: selectedDate,
             timeSlot: selectedTime,
             pax: parseInt(pax),
-            menuItems: [],
-            totalCost: 50.00, // Fixed price for now
-            deposit: 50.00,
+            menuItems: finalItems,
+            totalCost: finalTotal,
+            deposit: baseDeposit,
             status: "pending_payment", 
             createdAt: Timestamp.now()
         };
         
-        // Save to Firestore
         const docRef = await addDoc(collection(db, "bookings"), bookingData);
-        // Redirect with ID
         window.location.href = `payment.html?id=${docRef.id}`; 
         
     } catch (error) {
         console.error("Booking Error:", error);
-        alert("Failed to create booking: " + error.message);
+        alert("Booking failed: " + error.message);
         if(bookBtn) {
             bookBtn.disabled = false;
             bookBtn.innerText = "Try Again";

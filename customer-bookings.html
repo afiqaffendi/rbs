@@ -9,6 +9,14 @@
     <style>
         body { -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        /* Animation for the modal */
+        @keyframes bounce-in {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-bounce-in {
+            animation: bounce-in 0.2s ease-out forwards;
+        }
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 flex justify-center items-center min-h-screen p-0 md:p-4">
@@ -45,12 +53,37 @@
                 <i data-lucide="calendar-check" class="w-6 h-6"></i>
                 <span class="text-[10px] font-bold">My Bookings</span>
             </button>
-         <button onclick="window.location.href='customer-profile.html'" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-900 transition">
-    <i data-lucide="user" class="w-6 h-6"></i>
-    <span class="text-[10px] font-bold">Profile</span>
-</button>
+            <button onclick="window.location.href='customer-profile.html'" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-900 transition">
+                <i data-lucide="user" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Profile</span>
+            </button>
         </div>
 
+    </div>
+
+    <div id="review-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 relative animate-bounce-in">
+            <button onclick="closeReviewModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-900">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+            
+            <h3 class="text-xl font-bold text-slate-900 mb-1">Rate your experience</h3>
+            <p class="text-sm text-slate-500 mb-6">How was the food at <span id="review-res-name" class="font-bold text-slate-800">Restaurant</span>?</p>
+            
+            <div class="flex justify-center gap-2 mb-6">
+                <button onclick="setRating(1)" class="star-btn text-slate-300 hover:text-yellow-400 transition"><i data-lucide="star" class="w-8 h-8 fill-current"></i></button>
+                <button onclick="setRating(2)" class="star-btn text-slate-300 hover:text-yellow-400 transition"><i data-lucide="star" class="w-8 h-8 fill-current"></i></button>
+                <button onclick="setRating(3)" class="star-btn text-slate-300 hover:text-yellow-400 transition"><i data-lucide="star" class="w-8 h-8 fill-current"></i></button>
+                <button onclick="setRating(4)" class="star-btn text-slate-300 hover:text-yellow-400 transition"><i data-lucide="star" class="w-8 h-8 fill-current"></i></button>
+                <button onclick="setRating(5)" class="star-btn text-slate-300 hover:text-yellow-400 transition"><i data-lucide="star" class="w-8 h-8 fill-current"></i></button>
+            </div>
+
+            <textarea id="review-comment" rows="3" placeholder="Write a short review..." class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-teal-500 mb-4"></textarea>
+
+            <button onclick="submitReview()" id="submit-review-btn" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-black transition disabled:opacity-50 disabled:cursor-not-allowed">
+                Submit Review
+            </button>
+        </div>
     </div>
 
     <script type="module" src="js/customer-bookings.js"></script>
