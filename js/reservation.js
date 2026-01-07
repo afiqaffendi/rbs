@@ -21,10 +21,13 @@ const summaryText = document.getElementById('summary-text');
 const bookBtn = document.getElementById('book-btn');
 const resNameEl = document.getElementById('res-name');
 const resAddrEl = document.getElementById('res-address');
+// FIXED: Element for Image
+const resImageEl = document.getElementById('res-image');
+
 const menuContainer = document.getElementById('menu-container');
 const totalCostDisplay = document.getElementById('total-cost-display');
 
-// NEW: Review Elements
+// Review Elements
 const reviewsContainer = document.getElementById('reviews-container');
 const avgRatingEl = document.getElementById('avg-rating');
 const reviewCountEl = document.getElementById('review-count');
@@ -46,7 +49,7 @@ onAuthStateChanged(auth, async (user) => {
         userUid = user.uid;
         if (restaurantId) {
             await loadRestaurantData(restaurantId);
-            loadReviews(restaurantId); // NEW: Fetch reviews
+            loadReviews(restaurantId);
         } else {
             alert("No restaurant selected!");
             window.location.href = 'customer-home.html';
@@ -62,11 +65,21 @@ async function loadRestaurantData(id) {
 
         if (docSnap.exists()) {
             currentRestaurant = docSnap.data();
+            
+            // Text Updates
             if(resNameEl) resNameEl.innerText = currentRestaurant.name;
             if(resAddrEl) resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
             
+            // FIXED: Image Update
+            if(resImageEl) {
+                // If owner has no image, use a random food fallback
+                const fallbackImg = `https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80&random=${id}`;
+                resImageEl.src = currentRestaurant.imageUrl || fallbackImg;
+            }
+            
             if(selectedDate) renderTimeSlots();
             
+            // Load Menu
             loadMenu(currentRestaurant.menuItems || []); 
         } else {
             if(resNameEl) resNameEl.innerText = "Restaurant Not Found";
@@ -76,10 +89,9 @@ async function loadRestaurantData(id) {
     }
 }
 
-// === NEW: Load Reviews ===
+// === Reviews Logic ===
 async function loadReviews(restId) {
     try {
-        // Query reviews for this restaurant
         const q = query(collection(db, "reviews"), where("restaurantId", "==", restId));
         const snapshot = await getDocs(q);
 
@@ -97,7 +109,6 @@ async function loadReviews(restId) {
             const data = doc.data();
             totalStars += data.rating;
             
-            // Create Star Icons string
             let starsDisplay = '';
             for(let i=0; i<5; i++) {
                 starsDisplay += `<i data-lucide="star" class="w-3 h-3 ${i < data.rating ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'}"></i>`;
@@ -114,15 +125,12 @@ async function loadReviews(restId) {
             `;
         });
 
-        // Calculate Average
         const avg = (totalStars / snapshot.size).toFixed(1);
         
-        // Update UI
         if(avgRatingEl) avgRatingEl.innerText = avg;
         if(reviewCountEl) reviewCountEl.innerText = `${snapshot.size} Reviews`;
         if(reviewsContainer) {
             reviewsContainer.innerHTML = reviewsHTML;
-            // Re-render icons for the new HTML
             if(window.lucide) lucide.createIcons();
         }
 
@@ -131,7 +139,7 @@ async function loadReviews(restId) {
     }
 }
 
-// === Menu Loading Logic ===
+// === Menu Logic ===
 function loadMenu(items) {
     if(!menuContainer) return;
 
@@ -209,7 +217,7 @@ function renderTimeSlots() {
 
     if (!selectedDate || !currentRestaurant) return;
 
-    // Smart Time Parser
+    // Robust Time Parser
     const generateSlots = (hours) => {
         const parseTime = (t) => {
             t = t.trim().toUpperCase(); 
@@ -230,7 +238,6 @@ function renderTimeSlots() {
             return hours * 60 + minutes;
         };
         
-        // Handle separator ("-" or "TO")
         let separator = hours.includes('-') ? '-' : 'to';
         const parts = hours.split(separator);
         if (parts.length !== 2) return []; 
@@ -330,7 +337,6 @@ function updateSummary() {
     }
 }
 
-// === MAIN BOOKING FUNCTION ===
 window.handleBooking = async () => {
     if(!userUid) {
         alert("Please login first.");

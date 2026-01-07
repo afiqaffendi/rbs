@@ -39,21 +39,26 @@ async function loadRestaurants() {
             return;
         }
 
-        restaurantList.innerHTML = ''; // Clear skeleton
+        restaurantList.innerHTML = ''; 
 
         querySnapshot.forEach((doc) => {
             const data = doc.data();
             
-            // Random image for demo purposes (since DB might not have images yet)
-            // In a real app, use: data.imageUrl || 'default.jpg'
+            // Random image fallback
             const randomImg = `https://images.unsplash.com/photo-1552566626-52f8b828add9?w=600&q=80&random=${doc.id}`;
             
+            // === NEW: Dynamic Rating Logic ===
+            // Reads 'averageRating' from DB, defaults to "New" if missing
+            const ratingDisplay = data.averageRating 
+                ? parseFloat(data.averageRating).toFixed(1) 
+                : 'New';
+            
+            const starColor = data.averageRating ? 'text-yellow-500 fill-yellow-500' : 'text-slate-300';
+
             const card = document.createElement('div');
-            // Tailwind Card Styling
             card.className = "group bg-white rounded-2xl p-3 border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer";
             
             card.onclick = () => {
-                // Link to the new Reservation Page
                 window.location.href = `reservation.html?id=${doc.id}`;
             };
 
@@ -61,7 +66,7 @@ async function loadRestaurants() {
                 <div class="h-40 w-full rounded-xl overflow-hidden relative bg-slate-100 mb-3">
                     <img src="${data.imageUrl || randomImg}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                     <div class="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold text-slate-800 flex items-center gap-1 shadow-sm">
-                        <i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500"></i> 4.8
+                        <i data-lucide="star" class="w-3 h-3 ${starColor}"></i> ${ratingDisplay}
                     </div>
                 </div>
 
@@ -85,7 +90,6 @@ async function loadRestaurants() {
             restaurantList.appendChild(card);
         });
 
-        // Initialize Icons
         if(window.lucide) lucide.createIcons();
 
     } catch (error) {

@@ -68,12 +68,9 @@ function renderBookings() {
 
     const filtered = allBookings.filter(b => {
         if (currentView === 'upcoming') {
-            // Upcoming: Future dates AND active status (confirmed/pending)
-            // We EXCLUDE 'completed' from upcoming because it belongs in history
             return b.bookingDate >= today && 
                    ['confirmed', 'pending_payment', 'pending_verification'].includes(b.status);
         } else {
-            // History: Past dates OR Completed OR Cancelled/Rejected
             return b.bookingDate < today || 
                    ['completed', 'cancelled', 'rejected'].includes(b.status);
         }
@@ -94,10 +91,9 @@ function renderBookings() {
         let statusBadge = '';
         let statusColor = '';
 
-        // --- NEW: Handle "Completed" Status correctly ---
         if (data.status === 'completed') {
             statusBadge = 'Completed';
-            statusColor = 'bg-teal-50 text-teal-700 border-teal-100'; // Success Color
+            statusColor = 'bg-teal-50 text-teal-700 border-teal-100'; 
         } else if (data.status === 'confirmed') {
             statusBadge = 'Confirmed';
             statusColor = 'bg-green-50 text-green-700 border-green-100';
@@ -115,10 +111,8 @@ function renderBookings() {
         const card = document.createElement('div');
         card.className = "bg-white p-5 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 relative overflow-hidden";
 
-        // ACTION BUTTONS LOGIC
         let actionBtn = '';
 
-        // 1. Cancel Button (Only for Upcoming & Active)
         if (currentView === 'upcoming' && ['confirmed', 'pending_payment'].includes(data.status)) {
             actionBtn = `
                 <button onclick="handleCancel('${data.id}')" class="w-full mt-4 py-3 rounded-xl border border-red-100 text-red-600 font-bold text-xs bg-red-50 hover:bg-red-100 transition">
@@ -126,7 +120,6 @@ function renderBookings() {
                 </button>`;
         }
         
-        // 2. Review Button (Only for History & Completed & Not Reviewed)
         if (data.status === 'completed' && !data.isReviewed) {
             actionBtn = `
                 <button onclick="openReviewModal('${data.id}', '${data.restaurantName}', '${data.restaurantId}')" class="w-full mt-4 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-black transition flex justify-center items-center gap-2">
@@ -176,17 +169,13 @@ function renderBookings() {
     if(window.lucide) lucide.createIcons();
 }
 
-// === CANCELLATION LOGIC ===
 window.handleCancel = async (bookingId) => {
     if(!confirm("Are you sure you want to cancel?")) return;
     try {
         await updateDoc(doc(db, "bookings", bookingId), { status: 'cancelled' });
-        
-        // Optimistic Update
         const item = allBookings.find(b => b.id === bookingId);
         if(item) item.status = 'cancelled';
-        
-        renderBookings(); // Will move item to History tab automatically
+        renderBookings(); 
         alert("Booking cancelled.");
     } catch (error) {
         console.error(error);
@@ -194,7 +183,6 @@ window.handleCancel = async (bookingId) => {
     }
 };
 
-// === REVIEW MODAL LOGIC ===
 window.openReviewModal = (bookingId, resName, resId) => {
     currentReviewBookingId = bookingId;
     currentReviewRestaurantId = resId;
@@ -214,22 +202,19 @@ window.setRating = (rating) => {
 };
 
 function updateStars() {
-    // FIX: Select 'svg' instead of 'i' because Lucide transforms the icons
     const stars = document.querySelectorAll('.star-btn svg');
-    
     stars.forEach((star, index) => {
         if (index < selectedRating) {
-            // Fill Yellow
             star.classList.add('fill-yellow-400', 'text-yellow-400');
             star.classList.remove('text-slate-300');
         } else {
-            // Reset to Grey
             star.classList.remove('fill-yellow-400', 'text-yellow-400');
             star.classList.add('text-slate-300');
         }
     });
 }
 
+// === MAIN UPDATE: Calculate & Save New Average ===
 window.submitReview = async () => {
     if (selectedRating === 0) {
         alert("Please select a star rating.");
@@ -240,7 +225,7 @@ window.submitReview = async () => {
     submitReviewBtn.disabled = true;
 
     try {
-        // 1. Save Review
+        // 1. Save the new Review
         await addDoc(collection(db, "reviews"), {
             restaurantId: currentReviewRestaurantId,
             bookingId: currentReviewBookingId,
@@ -254,7 +239,29 @@ window.submitReview = async () => {
             isReviewed: true
         });
 
-        // 3. Update Local State & UI
+        // 3. NEW: Recalculate Average Rating for Restaurant
+        // Fetch all reviews for this restaurant to calculate true average
+        const q = query(collection(db, "reviews"), where("restaurantId", "==", currentReviewRestaurantId));
+        const querySnapshot = await getDocs(q);
+        
+        let totalStars = 0;
+        let reviewCount = 0;
+        
+        querySnapshot.forEach(doc => {
+            const r = doc.data();
+            totalStars += r.rating;
+            reviewCount++;
+        });
+
+        const newAverage = reviewCount > 0 ? (totalStars / reviewCount) : 0;
+
+        // Save the new average to the Restaurant document
+        await updateDoc(doc(db, "restaurants", currentReviewRestaurantId), {
+            averageRating: newAverage,
+            reviewCount: reviewCount
+        });
+
+        // 4. Update Local UI
         const item = allBookings.find(b => b.id === currentReviewBookingId);
         if(item) item.isReviewed = true;
 
@@ -271,10 +278,8 @@ window.submitReview = async () => {
     }
 };
 
-// Tab Logic
 function updateTabs(view) {
     currentView = view;
-    
     const activeClass = ['bg-slate-900', 'text-white', 'shadow-md'];
     const inactiveClass = ['bg-slate-50', 'text-slate-500', 'border', 'border-slate-100'];
 
