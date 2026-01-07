@@ -25,7 +25,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// NEW: Find the Restaurant ID for the logged-in owner
+// NEW: Find the Restaurant ID for the logged-in owner AND Load Table Config
 async function findOwnerRestaurant(uid) {
     try {
         const q = query(collection(db, "restaurants"), where("ownerId", "==", uid));
@@ -33,8 +33,20 @@ async function findOwnerRestaurant(uid) {
 
         if (!querySnapshot.empty) {
             // Found the restaurant!
-            currentRestaurantId = querySnapshot.docs[0].id;
+            const docSnap = querySnapshot.docs[0];
+            currentRestaurantId = docSnap.id;
+            const data = docSnap.data();
             
+            // --- LOAD SAVED TABLE INVENTORY ---
+            if (data.tableInventory) {
+                document.getElementById('qty2pax').value = data.tableInventory["2pax"] || 0;
+                document.getElementById('qty4pax').value = data.tableInventory["4pax"] || 0;
+                document.getElementById('qty6pax').value = data.tableInventory["6pax"] || 0;
+                document.getElementById('qty8pax').value = data.tableInventory["8pax"] || 0;
+                document.getElementById('qty10pax').value = data.tableInventory["10pax"] || 0;
+            }
+            // ----------------------------------
+
             // Now load the dashboard for THIS restaurant
             const today = new Date().toISOString().split('T')[0];
             filterDateInput.value = today;
@@ -58,7 +70,6 @@ function setupRealtimeListener(dateFilter) {
 
     bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
 
-    // FIX: Added 'where("restaurantId", "==", currentRestaurantId)'
     const q = query(
         collection(db, "bookings"), 
         where("bookingDate", "==", dateFilter),
@@ -292,6 +303,35 @@ function showToast(message, type = 'success') {
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
+
+// === NEW: Function to Save Table Inventory ===
+window.saveTableConfig = async function() {
+    if (!currentRestaurantId) {
+        showToast("Error: Restaurant profile not loaded yet.", "error");
+        return;
+    }
+
+    const inventory = {
+        "2pax": parseInt(document.getElementById('qty2pax').value) || 0,
+        "4pax": parseInt(document.getElementById('qty4pax').value) || 0,
+        "6pax": parseInt(document.getElementById('qty6pax').value) || 0,
+        "8pax": parseInt(document.getElementById('qty8pax').value) || 0,
+        "10pax": parseInt(document.getElementById('qty10pax').value) || 0
+    };
+
+    try {
+        const docRef = doc(db, "restaurants", currentRestaurantId);
+        // We use merge: true implicitly with updateDoc for top-level fields, 
+        // but since we are updating a specific field 'tableInventory', updateDoc is perfect.
+        await updateDoc(docRef, { tableInventory: inventory });
+        
+        showToast("Table configuration saved successfully!");
+        console.log("Saved Inventory:", inventory);
+    } catch (error) {
+        console.error("Error saving tables:", error);
+        showToast("Failed to save: " + error.message, "error");
+    }
+};
 
 filterDateInput.addEventListener('change', (e) => setupRealtimeListener(e.target.value));
 

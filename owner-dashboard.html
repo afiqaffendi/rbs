@@ -82,6 +82,40 @@
 
             <div class="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8">
                 
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Table Inventory Setup</h2>
+                            <p class="text-slate-500 text-sm mt-1">Enter the <b>quantity</b> of tables you have for each seating capacity.</p>
+                        </div>
+                        <button onclick="saveTableConfig()" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-black transition shadow-lg flex items-center gap-2">
+                            <i data-lucide="save" class="w-4 h-4"></i> Save Configuration
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">2 Pax (Couples)</label>
+                            <input type="number" id="qty2pax" class="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold text-slate-900 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0" min="0">
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">4 Pax (Small)</label>
+                            <input type="number" id="qty4pax" class="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold text-slate-900 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0" min="0">
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">6 Pax (Family)</label>
+                            <input type="number" id="qty6pax" class="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold text-slate-900 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0" min="0">
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">8 Pax (Large)</label>
+                            <input type="number" id="qty8pax" class="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold text-slate-900 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0" min="0">
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-400 uppercase mb-2">10+ Pax (Banquet)</label>
+                            <input type="number" id="qty10pax" class="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold text-slate-900 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0" min="0">
+                        </div>
+                    </div>
+                </div>
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                         <h2 class="text-2xl font-bold text-slate-900">Performance Summary</h2>

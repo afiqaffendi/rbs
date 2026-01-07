@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Setup - Admin</title>
+    <link rel="stylesheet" href="styles.css"> 
+</head>
+<body>
+
+    <div class="container">
+        <h2>Restaurant Seating Configuration</h2>
+        <p>Please enter the total number of tables you have for each category.</p>
+
+        <form id="tableConfigForm">
+            <div class="form-group">
+                <label>Tables for 2 Pax (Couples):</label>
+                <input type="number" id="qty2pax" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+                <label>Tables for 4 Pax (Small Group):</label>
+                <input type="number" id="qty4pax" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+                <label>Tables for 6 Pax (Family):</label>
+                <input type="number" id="qty6pax" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+                <label>Tables for 8 Pax (Large Group):</label>
+                <input type="number" id="qty8pax" value="0" min="0">
+            </div>
+
+            <div class="form-group">
+                <label>Tables for 10+ Pax (Banquet):</label>
+                <input type="number" id="qty10pax" value="0" min="0">
+            </div>
+
+            <br>
+            <button type="button" onclick="saveTableConfig()">Save Configuration</button>
+        </form>
+    </div>
+
+    <script type="module" src="admin.js"></script>
+
+</body>
+</html>
