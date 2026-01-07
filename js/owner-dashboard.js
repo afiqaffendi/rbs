@@ -1,6 +1,6 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
@@ -13,28 +13,56 @@ const statRevenue = document.getElementById('stat-revenue');
 // State
 let currentListener = null;
 let revenueChart = null; 
+let currentRestaurantId = null; // Store the specific restaurant ID
 
 // 1. Auth Check & Init
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = 'index.html';
     } else {
-        const today = new Date().toISOString().split('T')[0];
-        filterDateInput.value = today;
-        initChart();
-        setupRealtimeListener(today);
+        // First, find which restaurant belongs to this user
+        await findOwnerRestaurant(user.uid);
     }
 });
+
+// NEW: Find the Restaurant ID for the logged-in owner
+async function findOwnerRestaurant(uid) {
+    try {
+        const q = query(collection(db, "restaurants"), where("ownerId", "==", uid));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+            // Found the restaurant!
+            currentRestaurantId = querySnapshot.docs[0].id;
+            
+            // Now load the dashboard for THIS restaurant
+            const today = new Date().toISOString().split('T')[0];
+            filterDateInput.value = today;
+            initChart();
+            setupRealtimeListener(today);
+        } else {
+            // User is an owner but hasn't created a restaurant profile yet
+            alert("No restaurant profile found. Please set up your profile.");
+            window.location.href = 'owner-profile.html';
+        }
+    } catch (error) {
+        console.error("Error finding restaurant:", error);
+        alert("System Error: Could not load profile.");
+    }
+}
 
 // 2. Real-Time Logic (Day Overview)
 function setupRealtimeListener(dateFilter) {
     if (currentListener) currentListener(); // Unsubscribe old
+    if (!currentRestaurantId) return; // Safety check
 
     bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
 
+    // FIX: Added 'where("restaurantId", "==", currentRestaurantId)'
     const q = query(
         collection(db, "bookings"), 
-        where("bookingDate", "==", dateFilter)
+        where("bookingDate", "==", dateFilter),
+        where("restaurantId", "==", currentRestaurantId) 
     );
 
     currentListener = onSnapshot(q, (snapshot) => {
@@ -58,10 +86,9 @@ function setupRealtimeListener(dateFilter) {
             if (['confirmed', 'completed'].includes(data.status)) {
                 if (data.pax) totalGuests += parseInt(data.pax);
                 
-                // === CHANGED: SUBTRACT DEPOSIT FROM REVENUE ===
+                // Subtract fixed RM 50 deposit
                 if (data.totalCost) {
                     const rawCost = parseFloat(data.totalCost);
-                    // Subtract fixed RM 50 deposit. Ensure we don't add negative numbers.
                     const actualRevenue = Math.max(0, rawCost - 50); 
                     revenue += actualRevenue;
                 }
@@ -78,8 +105,6 @@ function setupRealtimeListener(dateFilter) {
         
         renderTable(bookings);
         updateStats(confirmedCount, totalGuests, revenue);
-        
-        // Pass data to chart
         updateChart(bookings); 
 
     }, (error) => {
@@ -189,7 +214,7 @@ function initChart() {
         data: {
             labels: ['9 AM', '11 AM', '1 PM', '3 PM', '5 PM', '7 PM', '9 PM'],
             datasets: [{
-                label: 'Food Sales (RM)', // Renamed Label
+                label: 'Food Sales (RM)', 
                 data: [0,0,0,0,0,0,0], 
                 borderColor: '#0d9488', 
                 backgroundColor: gradient,
@@ -211,7 +236,6 @@ function initChart() {
     });
 }
 
-// === CHANGED: CALCULATE REAL REVENUE (MINUS DEPOSIT) ===
 function updateChart(bookings) {
     const buckets = [0, 0, 0, 0, 0, 0, 0];
 
@@ -219,11 +243,8 @@ function updateChart(bookings) {
         if (['confirmed', 'completed'].includes(b.status)) {
             const hour = parseHour(b.timeSlot);
             const rawCost = parseFloat(b.totalCost || 0);
-            
-            // Subtract Deposit (50) for the chart too
             const amt = Math.max(0, rawCost - 50);
 
-            // Map hour to bucket index
             let index = -1;
             if (hour >= 9 && hour < 11) index = 0;
             else if (hour >= 11 && hour < 13) index = 1;
@@ -247,12 +268,9 @@ function parseHour(timeStr) {
     if(!timeStr) return 0;
     const [time, modifier] = timeStr.split(' ');
     let [hours, minutes] = time.split(':');
-    
     hours = parseInt(hours);
-    
     if (hours === 12 && modifier === 'AM') hours = 0;
     if (hours !== 12 && modifier === 'PM') hours += 12;
-    
     return hours;
 }
 
@@ -275,7 +293,6 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// Event Listeners
 filterDateInput.addEventListener('change', (e) => setupRealtimeListener(e.target.value));
 
 document.getElementById('btn-refresh').onclick = () => {
