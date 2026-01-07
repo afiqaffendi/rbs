@@ -19,6 +19,7 @@ let currentView = 'upcoming';
 let selectedRating = 0;
 let currentReviewBookingId = null;
 let currentReviewRestaurantId = null;
+let globalInterval = null; // NEW: To manage the live timer
 
 // 1. Auth Check
 onAuthStateChanged(auth, (user) => {
@@ -63,6 +64,9 @@ async function loadUserBookings(uid) {
 
 // 3. Render Logic
 function renderBookings() {
+    // Clear previous timer to prevent duplicates/errors
+    if (globalInterval) clearInterval(globalInterval);
+
     bookingsList.innerHTML = '';
     const today = new Date().toISOString().split('T')[0];
 
@@ -112,8 +116,30 @@ function renderBookings() {
         card.className = "bg-white p-5 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 relative overflow-hidden";
 
         let actionBtn = '';
+        let countdownHTML = '';
 
-        if (currentView === 'upcoming' && ['confirmed', 'pending_payment'].includes(data.status)) {
+        // --- NEW: Add Countdown UI for Upcoming Confirmed Bookings ---
+        if (currentView === 'upcoming' && data.status === 'confirmed') {
+            // We embed the target time in a data attribute
+            countdownHTML = `
+                <div class="mt-4 p-3 bg-slate-900 rounded-xl text-white flex justify-between items-center shadow-md live-timer-card" 
+                     data-date="${data.bookingDate}" 
+                     data-time="${data.timeSlot}">
+                    <div>
+                        <p class="text-[10px] text-teal-400 font-bold uppercase tracking-wider">Table Ready In</p>
+                        <p class="text-xs text-slate-400">Your reservation</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="timer-display font-mono text-xl font-bold tracking-tight">--:--:--</span>
+                    </div>
+                </div>
+            `;
+            
+            actionBtn = `
+                <button onclick="handleCancel('${data.id}')" class="w-full mt-3 py-3 rounded-xl border border-red-100 text-red-600 font-bold text-xs bg-red-50 hover:bg-red-100 transition">
+                    Cancel Reservation
+                </button>`;
+        } else if (currentView === 'upcoming' && ['pending_payment', 'pending_verification'].includes(data.status)) {
             actionBtn = `
                 <button onclick="handleCancel('${data.id}')" class="w-full mt-4 py-3 rounded-xl border border-red-100 text-red-600 font-bold text-xs bg-red-50 hover:bg-red-100 transition">
                     Cancel Reservation
@@ -133,7 +159,7 @@ function renderBookings() {
         }
 
         card.innerHTML = `
-            <div class="flex justify-between items-start mb-4">
+            <div class="flex justify-between items-start mb-2">
                 <div>
                     <h3 class="font-bold text-slate-900 text-lg leading-tight">${data.restaurantName}</h3>
                     <p class="text-xs text-slate-400 flex items-center gap-1 mt-1">
@@ -145,7 +171,7 @@ function renderBookings() {
                 </span>
             </div>
 
-            <div class="flex items-center gap-4 border-t border-slate-50 pt-4">
+            <div class="flex items-center gap-4 border-t border-slate-50 pt-3 mt-2">
                 <div class="flex flex-col">
                     <span class="text-[10px] uppercase font-bold text-slate-400">Date</span>
                     <span class="text-sm font-bold text-slate-700">${data.bookingDate}</span>
@@ -161,12 +187,66 @@ function renderBookings() {
                     <span class="text-sm font-bold text-slate-700">${data.pax} Pax</span>
                 </div>
             </div>
+            
+            ${countdownHTML}
             ${actionBtn}
         `;
         bookingsList.appendChild(card);
     });
 
     if(window.lucide) lucide.createIcons();
+    
+    // --- NEW: Start Timers if we are in Upcoming view ---
+    if (currentView === 'upcoming') {
+        startLiveTimers();
+    }
+}
+
+// --- NEW: Live Timer Logic ---
+function startLiveTimers() {
+    const updateAllTimers = () => {
+        const timerCards = document.querySelectorAll('.live-timer-card');
+        const now = new Date().getTime();
+
+        timerCards.forEach(card => {
+            const dateStr = card.dataset.date; // "2026-02-20"
+            const timeStr = card.dataset.time; // "08:00 PM"
+            const displayEl = card.querySelector('.timer-display');
+
+            // Parse Date
+            const [time, modifier] = timeStr.split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours);
+            if (hours === 12 && modifier === 'AM') hours = 0;
+            if (hours !== 12 && modifier === 'PM') hours += 12;
+
+            const targetDate = new Date(dateStr);
+            targetDate.setHours(hours, parseInt(minutes), 0, 0);
+
+            const distance = targetDate.getTime() - now;
+
+            if (distance < 0) {
+                displayEl.innerHTML = "<span class='text-green-400'>NOW</span>";
+                return;
+            }
+
+            // Calculate
+            const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+            const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((distance % (1000 * 60)) / 1000);
+
+            if (days > 0) {
+                displayEl.innerText = `${days}d ${h}h ${m}m`;
+            } else {
+                displayEl.innerText = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+        });
+    };
+
+    // Run immediately then every second
+    updateAllTimers();
+    globalInterval = setInterval(updateAllTimers, 1000);
 }
 
 window.handleCancel = async (bookingId) => {
@@ -214,7 +294,6 @@ function updateStars() {
     });
 }
 
-// === MAIN UPDATE: Calculate & Save New Average ===
 window.submitReview = async () => {
     if (selectedRating === 0) {
         alert("Please select a star rating.");
@@ -239,8 +318,7 @@ window.submitReview = async () => {
             isReviewed: true
         });
 
-        // 3. NEW: Recalculate Average Rating for Restaurant
-        // Fetch all reviews for this restaurant to calculate true average
+        // 3. Recalculate Average Rating for Restaurant
         const q = query(collection(db, "reviews"), where("restaurantId", "==", currentReviewRestaurantId));
         const querySnapshot = await getDocs(q);
         
@@ -255,7 +333,6 @@ window.submitReview = async () => {
 
         const newAverage = reviewCount > 0 ? (totalStars / reviewCount) : 0;
 
-        // Save the new average to the Restaurant document
         await updateDoc(doc(db, "restaurants", currentReviewRestaurantId), {
             averageRating: newAverage,
             reviewCount: reviewCount

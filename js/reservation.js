@@ -12,6 +12,7 @@ let userUid = null;
 let cart = {}; 
 let baseDeposit = 50.00;
 let assignedTableSize = null; // Store the assigned table size here
+let countdownInterval = null; // To store the timer ID
 
 // --- DOM ELEMENTS ---
 const paxDisplay = document.getElementById('pax-display');
@@ -25,6 +26,11 @@ const resAddrEl = document.getElementById('res-address');
 const resImageEl = document.getElementById('res-image');
 const menuContainer = document.getElementById('menu-container');
 const totalCostDisplay = document.getElementById('total-cost-display');
+
+// Countdown Elements
+const estimationCard = document.getElementById('estimation-card');
+const countdownDisplay = document.getElementById('countdown-display');
+const targetTimeDisplay = document.getElementById('target-time-display');
 
 // Gallery Elements
 const gallerySection = document.getElementById('gallery-section');
@@ -50,8 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
-        // If not logged in, redirect or let them browse (logic depends on your flow)
-        // For now, we redirect to ensure they can book
         window.location.href = 'index.html';
     } else {
         userUid = user.uid;
@@ -65,7 +69,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- 2. LOAD RESTAURANT DETAILS (The part you were missing) ---
+// --- 2. LOAD RESTAURANT DETAILS ---
 async function loadRestaurantData(id) {
     try {
         const docRef = doc(db, "restaurants", id);
@@ -107,11 +111,10 @@ async function checkAvailability(timeSlot) {
     }
 
     try {
-        // A. GET INVENTORY (From the loaded restaurant data)
+        // A. GET INVENTORY
         const inventory = currentRestaurant.tableInventory || {}; 
-        // Example: { "2pax": 5, "4pax": 10 }
-
-        // B. FETCH EXISTING BOOKINGS for this Date & Time
+        
+        // B. FETCH EXISTING BOOKINGS
         const q = query(
             collection(db, "bookings"),
             where("restaurantId", "==", restaurantId),
@@ -132,7 +135,6 @@ async function checkAvailability(timeSlot) {
         });
 
         // C. FIND BEST FIT
-        // We look for a table size that fits the group (Size >= Pax)
         const tableSizes = [2, 4, 6, 8, 10]; // Supported sizes
         let foundSize = null;
         let remaining = 0;
@@ -153,7 +155,7 @@ async function checkAvailability(timeSlot) {
 
         // D. UPDATE UI BASED ON RESULT
         if (foundSize) {
-            assignedTableSize = foundSize; // Save for booking
+            assignedTableSize = foundSize; 
             bookBtn.disabled = false;
             bookBtn.innerText = "Confirm Reservation";
             bookBtn.classList.add('bg-slate-900');
@@ -197,10 +199,7 @@ window.handleBooking = async () => {
             menuItems: finalItems,
             totalCost: finalTotal,
             deposit: baseDeposit,
-            
-            // NEW FIELD: Save the specific table size we assigned
             assignedTableSize: assignedTableSize, 
-            
             status: "pending_payment", 
             createdAt: Timestamp.now()
         };
@@ -215,14 +214,14 @@ window.handleBooking = async () => {
     }
 };
 
-// --- 5. UI HELPER FUNCTIONS (Pax, Time, Gallery, Menu) ---
+// --- 5. UI HELPER FUNCTIONS ---
 
 // PAX Logic
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
         pax += change;
         if(paxDisplay) paxDisplay.innerText = pax;
-        if(selectedTime) checkAvailability(selectedTime); // Re-check if group size changes
+        if(selectedTime) checkAvailability(selectedTime); 
     }
 };
 
@@ -233,6 +232,11 @@ if(dateInput) {
         selectedTime = null; 
         renderTimeSlots();
         updateSummary();
+        
+        // Hide Estimation Card if Date Changes
+        if(estimationCard) estimationCard.classList.add('hidden');
+        if(countdownInterval) clearInterval(countdownInterval);
+
         if(bookBtn) {
             bookBtn.disabled = true;
             bookBtn.innerText = "Select a Time";
@@ -277,7 +281,6 @@ function renderTimeSlots() {
         if(end <= start) end += 1440; 
         
         let slots = [];
-        // Create 60 minute intervals (adjustable)
         while(start + 60 <= end) { 
             let displayStart = start % 1440;
             let h = Math.floor(displayStart/60);
@@ -304,13 +307,17 @@ function renderTimeSlots() {
             btn.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-slate-900 text-white shadow-md ring-2 ring-teal-500';
             
             selectedTime = time;
+            
+            // --- NEW: Update the Dine Time Estimation ---
+            updateEstimation(time); 
+            
             checkAvailability(time); // Run the Table Logic
         };
         slotsContainer.appendChild(btn);
     });
 }
 
-// Menu & Cart Logic
+// Menu & Cart Logic (Same as before)
 function loadMenu(items) {
     if(!menuContainer) return;
     if (!items || items.length === 0) {
@@ -355,7 +362,7 @@ function calculateTotal() {
     if(totalCostDisplay) totalCostDisplay.innerText = total.toFixed(2);
 }
 
-// Gallery & Reviews Loaders
+// Gallery & Reviews (Same as before)
 function loadGallery(images) {
     if (!images || images.length === 0) {
         gallerySection.classList.add('hidden');
@@ -408,4 +415,61 @@ function showMsg(text, color) {
 
 function updateSummary() {
     if (summaryText) summaryText.innerText = (selectedDate && selectedTime) ? `${selectedDate} @ ${selectedTime}` : "-- / --";
+}
+
+// --- NEW: Live Countdown Logic ---
+function updateEstimation(timeStr) {
+    if (!estimationCard || !countdownDisplay) return;
+
+    // 1. Show the card
+    estimationCard.classList.remove('hidden');
+    targetTimeDisplay.innerText = timeStr; // Show "8:00 PM" text
+
+    // 2. Parse the Target Date & Time
+    if (!selectedDate) return;
+    
+    // Convert "08:00 PM" to 24h format for Date object
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':');
+    hours = parseInt(hours);
+    if (hours === 12 && modifier === 'AM') hours = 0;
+    if (hours !== 12 && modifier === 'PM') hours += 12;
+
+    const targetDate = new Date(selectedDate);
+    targetDate.setHours(hours, parseInt(minutes), 0, 0);
+
+    // 3. Start the Countdown Interval
+    if (countdownInterval) clearInterval(countdownInterval); // Stop previous timer
+
+    const updateTimer = () => {
+        const now = new Date().getTime();
+        const distance = targetDate.getTime() - now;
+
+        if (distance < 0) {
+            // Time has passed
+            clearInterval(countdownInterval);
+            countdownDisplay.innerText = "NOW";
+            countdownDisplay.classList.add('text-green-400');
+            return;
+        }
+
+        // Calculate hours, minutes, seconds
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((distance % (1000 * 60)) / 1000);
+
+        // Format: "1d 2h" or "02:30:15"
+        if (days > 0) {
+            countdownDisplay.innerText = `${days}d ${h}h ${m}m`;
+        } else {
+            // Pad with zeros (e.g., 05:09)
+            countdownDisplay.innerText = 
+                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+    };
+
+    // Run immediately, then every second
+    updateTimer(); 
+    countdownInterval = setInterval(updateTimer, 1000);
 }
