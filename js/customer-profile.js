@@ -1,5 +1,5 @@
 import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // DOM Elements
@@ -10,7 +10,6 @@ const headerEmail = document.getElementById('display-email-header');
 const statBookings = document.getElementById('stat-bookings');
 const statSpent = document.getElementById('stat-spent');
 const saveBtn = document.getElementById('save-btn');
-const changePwdBtn = document.getElementById('change-pwd-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const form = document.getElementById('profile-form');
 
@@ -78,7 +77,7 @@ async function loadUserStats(uid) {
     }
 }
 
-// 4. Save Changes (Updated: Removed Diet Logic)
+// 4. Save Changes
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -110,20 +109,7 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-// 5. Change Password Logic
-changePwdBtn.addEventListener('click', async () => {
-    if(confirm(`Send a password reset email to ${userEmail}?`)) {
-        try {
-            await sendPasswordResetEmail(auth, userEmail);
-            alert(`Email sent! Check your inbox at ${userEmail} to reset your password.`);
-        } catch (error) {
-            console.error("Error sending reset email:", error);
-            alert("Error: " + error.message);
-        }
-    }
-});
-
-// 6. Logout Logic
+// 5. Logout Logic
 logoutBtn.addEventListener('click', async () => {
     if(confirm("Are you sure you want to log out?")) {
         try {
