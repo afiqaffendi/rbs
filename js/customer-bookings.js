@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
@@ -19,7 +20,7 @@ let currentView = 'upcoming';
 let selectedRating = 0;
 let currentReviewBookingId = null;
 let currentReviewRestaurantId = null;
-let globalInterval = null; // NEW: To manage the live timer
+let globalInterval = null;
 
 // 1. Auth Check
 onAuthStateChanged(auth, (user) => {
@@ -64,7 +65,6 @@ async function loadUserBookings(uid) {
 
 // 3. Render Logic
 function renderBookings() {
-    // Clear previous timer to prevent duplicates/errors
     if (globalInterval) clearInterval(globalInterval);
 
     bookingsList.innerHTML = '';
@@ -118,9 +118,7 @@ function renderBookings() {
         let actionBtn = '';
         let countdownHTML = '';
 
-        // --- NEW: Add Countdown UI for Upcoming Confirmed Bookings ---
         if (currentView === 'upcoming' && data.status === 'confirmed') {
-            // We embed the target time in a data attribute
             countdownHTML = `
                 <div class="mt-4 p-3 bg-slate-900 rounded-xl text-white flex justify-between items-center shadow-md live-timer-card" 
                      data-date="${data.bookingDate}" 
@@ -196,24 +194,21 @@ function renderBookings() {
 
     if(window.lucide) lucide.createIcons();
     
-    // --- NEW: Start Timers if we are in Upcoming view ---
     if (currentView === 'upcoming') {
         startLiveTimers();
     }
 }
 
-// --- NEW: Live Timer Logic ---
 function startLiveTimers() {
     const updateAllTimers = () => {
         const timerCards = document.querySelectorAll('.live-timer-card');
         const now = new Date().getTime();
 
         timerCards.forEach(card => {
-            const dateStr = card.dataset.date; // "2026-02-20"
-            const timeStr = card.dataset.time; // "08:00 PM"
+            const dateStr = card.dataset.date;
+            const timeStr = card.dataset.time;
             const displayEl = card.querySelector('.timer-display');
 
-            // Parse Date
             const [time, modifier] = timeStr.split(' ');
             let [hours, minutes] = time.split(':');
             hours = parseInt(hours);
@@ -230,7 +225,6 @@ function startLiveTimers() {
                 return;
             }
 
-            // Calculate
             const days = Math.floor(distance / (1000 * 60 * 60 * 24));
             const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
@@ -244,7 +238,6 @@ function startLiveTimers() {
         });
     };
 
-    // Run immediately then every second
     updateAllTimers();
     globalInterval = setInterval(updateAllTimers, 1000);
 }
@@ -256,10 +249,10 @@ window.handleCancel = async (bookingId) => {
         const item = allBookings.find(b => b.id === bookingId);
         if(item) item.status = 'cancelled';
         renderBookings(); 
-        alert("Booking cancelled.");
+        showToast("Booking cancelled successfully.");
     } catch (error) {
         console.error(error);
-        alert("Error cancelling booking.");
+        showToast("Error cancelling booking.", "error");
     }
 };
 
@@ -296,7 +289,7 @@ function updateStars() {
 
 window.submitReview = async () => {
     if (selectedRating === 0) {
-        alert("Please select a star rating.");
+        showToast("Please select a star rating.", "error");
         return;
     }
 
@@ -304,7 +297,6 @@ window.submitReview = async () => {
     submitReviewBtn.disabled = true;
 
     try {
-        // 1. Save the new Review
         await addDoc(collection(db, "reviews"), {
             restaurantId: currentReviewRestaurantId,
             bookingId: currentReviewBookingId,
@@ -313,12 +305,10 @@ window.submitReview = async () => {
             createdAt: Timestamp.now()
         });
 
-        // 2. Mark Booking as Reviewed
         await updateDoc(doc(db, "bookings", currentReviewBookingId), {
             isReviewed: true
         });
 
-        // 3. Recalculate Average Rating for Restaurant
         const q = query(collection(db, "reviews"), where("restaurantId", "==", currentReviewRestaurantId));
         const querySnapshot = await getDocs(q);
         
@@ -338,17 +328,16 @@ window.submitReview = async () => {
             reviewCount: reviewCount
         });
 
-        // 4. Update Local UI
         const item = allBookings.find(b => b.id === currentReviewBookingId);
         if(item) item.isReviewed = true;
 
-        alert("Review submitted! Thank you.");
+        showToast("Review submitted! Thank you.");
         closeReviewModal();
         renderBookings();
 
     } catch (error) {
         console.error("Review Error:", error);
-        alert("Failed to submit review: " + error.message);
+        showToast("Failed to submit review.", "error");
     } finally {
         submitReviewBtn.innerText = "Submit Review";
         submitReviewBtn.disabled = false;

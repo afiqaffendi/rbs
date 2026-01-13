@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 const menuList = document.getElementById('menu-list');
 const galleryList = document.getElementById('gallery-list');
@@ -28,8 +29,8 @@ async function loadRestaurant(uid) {
         renderMenu(data.menuItems || []);
         renderGallery(data.menuImages || []);
     } else {
-        alert("Please set up your Restaurant Profile first.");
-        window.location.href = 'owner-profile.html';
+        showToast("Please set up your Restaurant Profile first.", "error");
+        setTimeout(() => window.location.href = 'owner-profile.html', 1500);
     }
 }
 
@@ -72,10 +73,11 @@ menuForm.addEventListener('submit', async (e) => {
         await updateDoc(doc(db, "restaurants", restaurantId), {
             menuItems: arrayUnion(newItem)
         });
-        location.reload(); 
+        showToast("Item added successfully!");
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
         console.error(error);
-        alert("Error adding item");
+        showToast("Error adding item", "error");
     }
 });
 
@@ -85,10 +87,11 @@ async function deleteFoodItem(item) {
         await updateDoc(doc(db, "restaurants", restaurantId), {
             menuItems: arrayRemove(item)
         });
-        location.reload();
+        showToast("Item removed.");
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
         console.error(error);
-        alert("Error deleting item");
+        showToast("Error deleting item", "error");
     }
 }
 
@@ -126,10 +129,11 @@ imageForm.addEventListener('submit', async (e) => {
         await updateDoc(doc(db, "restaurants", restaurantId), {
             menuImages: arrayUnion(url)
         });
-        location.reload();
+        showToast("Image added!");
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
         console.error(error);
-        alert("Error adding image");
+        showToast("Error adding image", "error");
     }
 });
 
@@ -139,9 +143,10 @@ async function deleteMenuImage(url) {
         await updateDoc(doc(db, "restaurants", restaurantId), {
             menuImages: arrayRemove(url)
         });
-        location.reload();
+        showToast("Image removed.");
+        setTimeout(() => location.reload(), 1000);
     } catch (error) {
         console.error(error);
-        alert("Error deleting image");
+        showToast("Error deleting image", "error");
     }
 }

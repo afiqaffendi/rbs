@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { showToast } from './toast.js';
 
 // --- STATE VARIABLES ---
 let currentRestaurant = null;
@@ -11,8 +12,8 @@ let pax = 2; // Default guests
 let userUid = null;
 let cart = {}; 
 let baseDeposit = 50.00;
-let assignedTableSize = null; // Store the assigned table size here
-let countdownInterval = null; // To store the timer ID
+let assignedTableSize = null; 
+let countdownInterval = null; 
 
 // --- DOM ELEMENTS ---
 const paxDisplay = document.getElementById('pax-display');
@@ -45,7 +46,6 @@ const reviewCountEl = document.getElementById('review-count');
 
 // --- 1. INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Set Date Picker Min Value to Today
     const today = new Date().toISOString().split('T')[0];
     if(dateInput) {
         dateInput.setAttribute('min', today);
@@ -78,7 +78,6 @@ async function loadRestaurantData(id) {
         if (docSnap.exists()) {
             currentRestaurant = docSnap.data();
             
-            // Update UI Text
             if(resNameEl) resNameEl.innerText = currentRestaurant.name;
             if(resAddrEl) resAddrEl.innerText = currentRestaurant.address || "Location info unavailable";
             if(resImageEl) {
@@ -86,7 +85,6 @@ async function loadRestaurantData(id) {
                 resImageEl.src = currentRestaurant.imageUrl || fallbackImg;
             }
             
-            // Initialize Slots and Menu
             if(selectedDate) renderTimeSlots();
             loadMenu(currentRestaurant.menuItems || []); 
             loadGallery(currentRestaurant.menuImages || []);
@@ -111,10 +109,8 @@ async function checkAvailability(timeSlot) {
     }
 
     try {
-        // A. GET INVENTORY
         const inventory = currentRestaurant.tableInventory || {}; 
         
-        // B. FETCH EXISTING BOOKINGS
         const q = query(
             collection(db, "bookings"),
             where("restaurantId", "==", restaurantId),
@@ -125,7 +121,6 @@ async function checkAvailability(timeSlot) {
 
         const snapshot = await getDocs(q);
         
-        // Count how many tables of each size are occupied
         const occupiedTables = { "2pax": 0, "4pax": 0, "6pax": 0, "8pax": 0, "10pax": 0 };
         snapshot.forEach(doc => {
             const data = doc.data();
@@ -134,8 +129,7 @@ async function checkAvailability(timeSlot) {
             }
         });
 
-        // C. FIND BEST FIT
-        const tableSizes = [2, 4, 6, 8, 10]; // Supported sizes
+        const tableSizes = [2, 4, 6, 8, 10]; 
         let foundSize = null;
         let remaining = 0;
 
@@ -148,12 +142,11 @@ async function checkAvailability(timeSlot) {
                 if (totalUsed < totalOwned) {
                     foundSize = sizeKey;
                     remaining = totalOwned - totalUsed;
-                    break; // Found the smallest suitable table!
+                    break; 
                 }
             }
         }
 
-        // D. UPDATE UI BASED ON RESULT
         if (foundSize) {
             assignedTableSize = foundSize; 
             bookBtn.disabled = false;
@@ -175,8 +168,8 @@ async function checkAvailability(timeSlot) {
 
 // --- 4. HANDLE BOOKING SUBMISSION ---
 window.handleBooking = async () => {
-    if(!userUid) { alert("Please login first."); return; }
-    if(!assignedTableSize) { alert("Please select an available time first."); return; }
+    if(!userUid) { showToast("Please login to book.", "error"); return; }
+    if(!assignedTableSize) { showToast("Please select a time slot.", "error"); return; }
 
     const finalItems = Object.values(cart).filter(i => i.qty > 0);
     let menuTotal = 0;
@@ -209,14 +202,13 @@ window.handleBooking = async () => {
 
     } catch (error) {
         console.error("Booking Error:", error);
-        alert("Booking failed: " + error.message);
+        showToast("Booking failed: " + error.message, "error");
         if(bookBtn) { bookBtn.disabled = false; bookBtn.innerText = "Try Again"; }
     }
 };
 
 // --- 5. UI HELPER FUNCTIONS ---
 
-// PAX Logic
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
         pax += change;
@@ -225,7 +217,6 @@ window.updatePax = (change) => {
     }
 };
 
-// Date Logic
 if(dateInput) {
     dateInput.addEventListener('change', (e) => {
         selectedDate = e.target.value;
@@ -233,7 +224,6 @@ if(dateInput) {
         renderTimeSlots();
         updateSummary();
         
-        // Hide Estimation Card if Date Changes
         if(estimationCard) estimationCard.classList.add('hidden');
         if(countdownInterval) clearInterval(countdownInterval);
 
@@ -246,13 +236,11 @@ if(dateInput) {
     });
 }
 
-// Time Slot Logic
 function renderTimeSlots() {
     if(slotsContainer) slotsContainer.innerHTML = '';
     if(availabilityMsg) availabilityMsg.classList.add('hidden');
     if (!selectedDate || !currentRestaurant) return;
 
-    // Helper to generate times (e.g. 10:00 AM - 10:00 PM)
     const generateSlots = (hours) => {
         const parseTime = (t) => {
             t = t.trim().toUpperCase(); 
@@ -301,23 +289,18 @@ function renderTimeSlots() {
         btn.className = `py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ${selectedTime === time ? 'bg-slate-900 text-white shadow-md ring-2 ring-teal-500' : 'bg-white text-slate-600 hover:border-teal-500'}`;
         btn.innerText = time;
         btn.onclick = () => {
-            // Visual Update
             const allBtns = slotsContainer.querySelectorAll('button');
             allBtns.forEach(b => b.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-white text-slate-600 hover:border-teal-500');
             btn.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-slate-900 text-white shadow-md ring-2 ring-teal-500';
             
             selectedTime = time;
-            
-            // --- NEW: Update the Dine Time Estimation ---
             updateEstimation(time); 
-            
-            checkAvailability(time); // Run the Table Logic
+            checkAvailability(time); 
         };
         slotsContainer.appendChild(btn);
     });
 }
 
-// Menu & Cart Logic (Same as before)
 function loadMenu(items) {
     if(!menuContainer) return;
     if (!items || items.length === 0) {
@@ -362,7 +345,6 @@ function calculateTotal() {
     if(totalCostDisplay) totalCostDisplay.innerText = total.toFixed(2);
 }
 
-// Gallery & Reviews (Same as before)
 function loadGallery(images) {
     if (!images || images.length === 0) {
         gallerySection.classList.add('hidden');
@@ -417,18 +399,14 @@ function updateSummary() {
     if (summaryText) summaryText.innerText = (selectedDate && selectedTime) ? `${selectedDate} @ ${selectedTime}` : "-- / --";
 }
 
-// --- NEW: Live Countdown Logic ---
 function updateEstimation(timeStr) {
     if (!estimationCard || !countdownDisplay) return;
 
-    // 1. Show the card
     estimationCard.classList.remove('hidden');
-    targetTimeDisplay.innerText = timeStr; // Show "8:00 PM" text
+    targetTimeDisplay.innerText = timeStr; 
 
-    // 2. Parse the Target Date & Time
     if (!selectedDate) return;
     
-    // Convert "08:00 PM" to 24h format for Date object
     const [time, modifier] = timeStr.split(' ');
     let [hours, minutes] = time.split(':');
     hours = parseInt(hours);
@@ -438,38 +416,32 @@ function updateEstimation(timeStr) {
     const targetDate = new Date(selectedDate);
     targetDate.setHours(hours, parseInt(minutes), 0, 0);
 
-    // 3. Start the Countdown Interval
-    if (countdownInterval) clearInterval(countdownInterval); // Stop previous timer
+    if (countdownInterval) clearInterval(countdownInterval);
 
     const updateTimer = () => {
         const now = new Date().getTime();
         const distance = targetDate.getTime() - now;
 
         if (distance < 0) {
-            // Time has passed
             clearInterval(countdownInterval);
             countdownDisplay.innerText = "NOW";
             countdownDisplay.classList.add('text-green-400');
             return;
         }
 
-        // Calculate hours, minutes, seconds
         const days = Math.floor(distance / (1000 * 60 * 60 * 24));
         const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const s = Math.floor((distance % (1000 * 60)) / 1000);
 
-        // Format: "1d 2h" or "02:30:15"
         if (days > 0) {
             countdownDisplay.innerText = `${days}d ${h}h ${m}m`;
         } else {
-            // Pad with zeros (e.g., 05:09)
             countdownDisplay.innerText = 
                 `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
     };
 
-    // Run immediately, then every second
     updateTimer(); 
     countdownInterval = setInterval(updateTimer, 1000);
 }

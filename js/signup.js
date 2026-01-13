@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 const signupForm = document.getElementById('signup-form');
 const errorMsg = document.getElementById('signup-error-msg');
@@ -15,31 +16,27 @@ signupForm.addEventListener('submit', async (e) => {
     errorMsg.innerText = "Creating account...";
 
     try {
-        // 1. Create Authentication User in Firebase
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // 2. Save User Role to Firestore
-        // We use setDoc with the user's UID so auth.js can find it easily later
         await setDoc(doc(db, "users", user.uid), {
             email: email,
             role: role,
             createdAt: new Date().toISOString()
         });
 
-        // 3. Success Feedback & Redirect
-        alert("Account created successfully!");
+        showToast("Account created successfully!");
 
-        if (role === 'Restaurant Owner') {
-            window.location.href = 'owner-dashboard.html';
-        } else {
-            window.location.href = 'customer-home.html';
-        }
+        setTimeout(() => {
+            if (role === 'Restaurant Owner') {
+                window.location.href = 'owner-dashboard.html';
+            } else {
+                window.location.href = 'customer-home.html';
+            }
+        }, 1500);
 
     } catch (error) {
         console.error("Signup Error:", error);
-        
-        // Handle common errors gracefully
         if (error.code === 'auth/email-already-in-use') {
             errorMsg.innerText = "That email is already registered.";
         } else if (error.code === 'auth/weak-password') {
@@ -47,5 +44,6 @@ signupForm.addEventListener('submit', async (e) => {
         } else {
             errorMsg.innerText = "Error: " + error.message;
         }
+        showToast("Signup failed. Check details.", "error");
     }
 });

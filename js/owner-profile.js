@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 const form = document.getElementById('profile-form');
 let currentDocId = null;
@@ -68,7 +69,6 @@ async function loadProfile() {
 
         document.getElementById('res-name').value = data.name;
         document.getElementById('res-address').value = data.address;
-        // REMOVED: document.getElementById('res-capacity').value = data.capacity;
         document.getElementById('res-image').value = data.imageUrl || '';
 
         if (data.operatingHours && data.operatingHours.includes(' - ')) {
@@ -97,7 +97,6 @@ form.addEventListener('submit', async (e) => {
         name: document.getElementById('res-name').value,
         address: document.getElementById('res-address').value,
         operatingHours: combinedHours, 
-        // REMOVED: capacity: parseInt(...)
         imageUrl: document.getElementById('res-image').value
     };
 
@@ -107,11 +106,11 @@ form.addEventListener('submit', async (e) => {
         } else {
             await addDoc(collection(db, "restaurants"), data);
         }
-        alert("Profile Saved Successfully!");
-        window.location.href = 'owner-dashboard.html';
+        showToast("Profile Saved Successfully!");
+        setTimeout(() => window.location.href = 'owner-dashboard.html', 1500);
     } catch (error) {
         console.error("Error:", error);
-        alert("Save Failed: " + error.message);
+        showToast("Save Failed: " + error.message, "error");
         btn.innerText = originalText;
         btn.disabled = false;
     }

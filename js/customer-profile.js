@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 // DOM Elements
 const nameInput = document.getElementById('profile-name');
@@ -38,8 +39,6 @@ async function loadUserData(user) {
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            
-            // Fill Inputs
             nameInput.value = data.displayName || '';
             phoneInput.value = data.phoneNumber || '';
             headerName.innerText = data.displayName || 'Valued Customer';
@@ -49,7 +48,7 @@ async function loadUserData(user) {
     }
 }
 
-// 3. Load Gamification Stats
+// 3. Load Stats
 async function loadUserStats(uid) {
     try {
         const q = query(
@@ -59,7 +58,6 @@ async function loadUserStats(uid) {
         );
 
         const querySnapshot = await getDocs(q);
-        
         let totalCount = 0;
         let totalSpent = 0;
 
@@ -89,7 +87,6 @@ form.addEventListener('submit', async (e) => {
 
     try {
         const userRef = doc(db, "users", userUid);
-        
         await updateDoc(userRef, {
             displayName: newName,
             phoneNumber: newPhone,
@@ -97,11 +94,11 @@ form.addEventListener('submit', async (e) => {
         });
 
         headerName.innerText = newName || 'Valued Customer';
-        alert("Profile updated successfully!");
+        showToast("Profile updated successfully!");
 
     } catch (error) {
         console.error("Error saving profile:", error);
-        alert("Failed to save changes.");
+        showToast("Failed to save changes.", "error");
     } finally {
         saveBtn.disabled = false;
         saveBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4 mr-2"></i> Save Changes`;
@@ -117,6 +114,7 @@ logoutBtn.addEventListener('click', async () => {
             window.location.href = 'index.html';
         } catch (error) {
             console.error("Logout Error:", error);
+            showToast("Error logging out", "error");
         }
     }
 });

@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 // DOM Elements
 const bookingsList = document.getElementById('bookings-list');
@@ -13,31 +14,27 @@ const statRevenue = document.getElementById('stat-revenue');
 // State
 let currentListener = null;
 let revenueChart = null; 
-let currentRestaurantId = null; // Store the specific restaurant ID
+let currentRestaurantId = null; 
 
 // 1. Auth Check & Init
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = 'index.html';
     } else {
-        // First, find which restaurant belongs to this user
         await findOwnerRestaurant(user.uid);
     }
 });
 
-// NEW: Find the Restaurant ID for the logged-in owner AND Load Table Config
 async function findOwnerRestaurant(uid) {
     try {
         const q = query(collection(db, "restaurants"), where("ownerId", "==", uid));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
-            // Found the restaurant!
             const docSnap = querySnapshot.docs[0];
             currentRestaurantId = docSnap.id;
             const data = docSnap.data();
             
-            // --- LOAD SAVED TABLE INVENTORY ---
             if (data.tableInventory) {
                 document.getElementById('qty2pax').value = data.tableInventory["2pax"] || 0;
                 document.getElementById('qty4pax').value = data.tableInventory["4pax"] || 0;
@@ -45,28 +42,24 @@ async function findOwnerRestaurant(uid) {
                 document.getElementById('qty8pax').value = data.tableInventory["8pax"] || 0;
                 document.getElementById('qty10pax').value = data.tableInventory["10pax"] || 0;
             }
-            // ----------------------------------
 
-            // Now load the dashboard for THIS restaurant
             const today = new Date().toISOString().split('T')[0];
             filterDateInput.value = today;
             initChart();
             setupRealtimeListener(today);
         } else {
-            // User is an owner but hasn't created a restaurant profile yet
-            alert("No restaurant profile found. Please set up your profile.");
+            showToast("No restaurant profile found.", "error");
             window.location.href = 'owner-profile.html';
         }
     } catch (error) {
         console.error("Error finding restaurant:", error);
-        alert("System Error: Could not load profile.");
+        showToast("System Error: Could not load profile.", "error");
     }
 }
 
-// 2. Real-Time Logic (Day Overview)
 function setupRealtimeListener(dateFilter) {
-    if (currentListener) currentListener(); // Unsubscribe old
-    if (!currentRestaurantId) return; // Safety check
+    if (currentListener) currentListener(); 
+    if (!currentRestaurantId) return; 
 
     bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
 
@@ -85,7 +78,7 @@ function setupRealtimeListener(dateFilter) {
         if (snapshot.empty) {
             renderTable([]);
             updateStats(0, 0, 0);
-            updateChart([]); // Clear chart
+            updateChart([]); 
             return;
         }
 
@@ -93,11 +86,9 @@ function setupRealtimeListener(dateFilter) {
             const data = doc.data();
             bookings.push({ id: doc.id, ...data });
             
-            // Stats: Count confirmed AND completed
             if (['confirmed', 'completed'].includes(data.status)) {
                 if (data.pax) totalGuests += parseInt(data.pax);
                 
-                // Subtract fixed RM 50 deposit
                 if (data.totalCost) {
                     const rawCost = parseFloat(data.totalCost);
                     const actualRevenue = Math.max(0, rawCost - 50); 
@@ -108,7 +99,6 @@ function setupRealtimeListener(dateFilter) {
             }
         });
 
-        // Sort: Active first, then completed, then others
         bookings.sort((a, b) => {
             const statusOrder = { 'confirmed': 1, 'completed': 2, 'pending_payment': 3, 'cancelled': 4 };
             return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
@@ -124,7 +114,6 @@ function setupRealtimeListener(dateFilter) {
     });
 }
 
-// 3. Render Table (UPDATED FOR CLICKABLE ROWS)
 function renderTable(data) {
     bookingsList.innerHTML = '';
     
@@ -138,10 +127,8 @@ function renderTable(data) {
         const row = document.createElement('tr');
         const isDimmed = item.status === 'cancelled' || item.status === 'rejected';
         
-        // NEW: Add cursor-pointer and hover effect
         row.className = `border-b border-gray-50 last:border-none transition cursor-pointer ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'}`;
         
-        // NEW: Click event to go to details page
         row.onclick = () => {
             window.location.href = `owner-order-details.html?id=${item.id}`;
         };
@@ -154,7 +141,6 @@ function renderTable(data) {
 
         let actionButtons = '-';
         if (item.status === 'confirmed') {
-            // NEW: Added event.stopPropagation() to prevent row click when clicking buttons
             actionButtons = `
                 <div class="flex justify-center gap-2">
                     <button onclick="event.stopPropagation(); updateStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center" title="Mark Completed">
@@ -223,7 +209,6 @@ function updateStats(total, guests, revenue) {
     statRevenue.innerText = `RM ${revenue.toFixed(2)}`;
 }
 
-// 4. Analytics Chart Logic
 function initChart() {
     const ctx = document.getElementById('revenueChart').getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
@@ -295,26 +280,6 @@ function parseHour(timeStr) {
     return hours;
 }
 
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    const colors = type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white';
-    const icon = type === 'success' ? 'check-circle' : 'alert-circle';
-
-    toast.className = `${colors} px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-10 opacity-0 transition-all duration-300`;
-    toast.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5"></i><span class="font-bold text-sm">${message}</span>`;
-
-    container.appendChild(toast);
-    lucide.createIcons();
-
-    setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 10);
-    setTimeout(() => {
-        toast.classList.add('translate-y-10', 'opacity-0');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-// === NEW: Function to Save Table Inventory ===
 window.saveTableConfig = async function() {
     if (!currentRestaurantId) {
         showToast("Error: Restaurant profile not loaded yet.", "error");
@@ -331,12 +296,8 @@ window.saveTableConfig = async function() {
 
     try {
         const docRef = doc(db, "restaurants", currentRestaurantId);
-        // We use merge: true implicitly with updateDoc for top-level fields, 
-        // but since we are updating a specific field 'tableInventory', updateDoc is perfect.
         await updateDoc(docRef, { tableInventory: inventory });
-        
         showToast("Table configuration saved successfully!");
-        console.log("Saved Inventory:", inventory);
     } catch (error) {
         console.error("Error saving tables:", error);
         showToast("Failed to save: " + error.message, "error");

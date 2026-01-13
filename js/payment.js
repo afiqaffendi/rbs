@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-config.js'; 
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { showToast } from './toast.js';
 
 // --- TOYYIBPAY CONFIGURATION ---
 const TOYYIB_SECRET_KEY = 'ssld1e1h-s9kj-nq2u-saau-a6v0xlt33sk1'; 
@@ -8,7 +9,6 @@ const TOYYIB_CATEGORY_CODE = 'i6g190ld';
 
 // --- VARIABLES ---
 let bookingData = null;
-// NEW: Get ID from URL (sent by reservation.js)
 let bookingId = new URLSearchParams(window.location.search).get('id');
 
 // DOM Elements
@@ -23,18 +23,15 @@ onAuthStateChanged(auth, (user) => {
         window.location.href = 'index.html';
     } else {
         if(bookingId) {
-            // Check if this is a return from Payment or a new load
             checkReturnFromPayment();
             loadBookingFromFirestore(bookingId);
         } else {
-            // Fallback for old flow or manual navigation
-            alert("No Booking ID found. Please make a reservation first.");
-            window.location.href = 'customer-home.html';
+            showToast("No Booking ID found.", "error");
+            setTimeout(() => window.location.href = 'customer-home.html', 1500);
         }
     }
 });
 
-// === NEW: Load from Firestore (Robutness Fix) ===
 async function loadBookingFromFirestore(id) {
     try {
         const docRef = doc(db, "bookings", id);
@@ -76,7 +73,6 @@ function renderBookingUI() {
         totalDisplay.innerText = `RM ${parseFloat(displayPrice).toFixed(2)}`;
     }
     
-    // UX: Disable button if already paid
     if(bookingData.status === 'confirmed') {
         if(fpxBtn) {
             fpxBtn.disabled = true;
@@ -100,14 +96,12 @@ if(fpxBtn) {
         const amountInCents = Math.round(parseFloat(rawPrice) * 100); 
 
         if (amountInCents < 100) {
-            alert(`Error: Amount RM ${rawPrice} is too low. Minimum RM 1.00.`);
+            showToast(`Amount RM ${rawPrice} is too low.`, "error");
             fpxBtn.innerHTML = originalText;
             fpxBtn.disabled = false;
             return;
         }
 
-        // === CRITICAL: URL construction ===
-        // We pass the Booking ID back in the return URL so we don't lose it
         const returnUrl = `${window.location.origin}${window.location.pathname}?id=${bookingId}&status=success`;
 
         const params = new URLSearchParams();
@@ -140,21 +134,20 @@ if(fpxBtn) {
             if (data && data[0] && data[0].BillCode) {
                 const billCode = data[0].BillCode;
                 
-                // Update Firestore with BillCode before redirecting (Safety)
                 await updateDoc(doc(db, "bookings", bookingId), { 
                     billCode: billCode 
                 });
 
                 window.location.href = `https://dev.toyyibpay.com/${billCode}`;
             } else {
-                alert("ToyyibPay Error: " + JSON.stringify(data));
+                showToast("ToyyibPay Error: " + JSON.stringify(data), "error");
                 fpxBtn.innerHTML = originalText;
                 fpxBtn.disabled = false;
             }
 
         } catch (error) {
             console.error("Connection Error:", error);
-            alert("Network Error: Could not connect to ToyyibPay.");
+            showToast("Network Error: Could not connect to gateway.", "error");
             fpxBtn.innerHTML = originalText;
             fpxBtn.disabled = false;
         }
@@ -167,7 +160,6 @@ async function checkReturnFromPayment() {
     const status = urlParams.get('status');
     const billCode = urlParams.get('billcode');
 
-    // If 'status=success' AND we have a Booking ID
     if (status === 'success' && bookingId) {
         
         if(loadingOverlay) loadingOverlay.classList.remove('hidden');
@@ -175,19 +167,18 @@ async function checkReturnFromPayment() {
         try {
             const docRef = doc(db, "bookings", bookingId);
             
-            // Confirm the booking in Firestore
             await updateDoc(docRef, {
                 status: 'confirmed',
                 paymentMethod: 'toyyibpay',
                 billCode: billCode || 'unknown'
             });
 
-            alert("Payment Success! Booking Confirmed.");
-            window.location.href = 'customer-bookings.html';
+            showToast("Payment Success! Booking Confirmed.");
+            setTimeout(() => window.location.href = 'customer-bookings.html', 1500);
 
         } catch (error) {
             console.error("Confirmation Error:", error);
-            alert("Payment marked successful, but failed to update status: " + error.message);
+            showToast("Failed to update status: " + error.message, "error");
             if(loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }
