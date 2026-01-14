@@ -101,7 +101,10 @@ function renderBookings() {
         } else if (data.status === 'confirmed') {
             statusBadge = 'Confirmed';
             statusColor = 'bg-green-50 text-green-700 border-green-100';
-        } else if (data.status === 'pending_verification' || data.status === 'pending_payment') {
+        } else if (data.status === 'pending_payment') {
+            statusBadge = 'Pay Deposit';
+            statusColor = 'bg-orange-50 text-orange-700 border-orange-100';
+        } else if (data.status === 'pending_verification') {
             statusBadge = 'Pending';
             statusColor = 'bg-yellow-50 text-yellow-700 border-yellow-100';
         } else if (data.status === 'rejected') {
@@ -118,6 +121,7 @@ function renderBookings() {
         let actionBtn = '';
         let countdownHTML = '';
 
+        // --- UPCOMING CONFIRMED ---
         if (currentView === 'upcoming' && data.status === 'confirmed') {
             countdownHTML = `
                 <div class="mt-4 p-3 bg-slate-900 rounded-xl text-white flex justify-between items-center shadow-md live-timer-card" 
@@ -137,13 +141,28 @@ function renderBookings() {
                 <button onclick="handleCancel('${data.id}')" class="w-full mt-3 py-3 rounded-xl border border-red-100 text-red-600 font-bold text-xs bg-red-50 hover:bg-red-100 transition">
                     Cancel Reservation
                 </button>`;
-        } else if (currentView === 'upcoming' && ['pending_payment', 'pending_verification'].includes(data.status)) {
+        } 
+        // --- PENDING PAYMENT (NEW: Pay Deposit Button) ---
+        else if (currentView === 'upcoming' && data.status === 'pending_payment') {
+            actionBtn = `
+                <div class="flex flex-col gap-2 mt-4">
+                    <button onclick="window.location.href='payment.html?id=${data.id}'" class="w-full py-3 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-black transition flex items-center justify-center gap-2 shadow-lg shadow-teal-900/10">
+                        <i data-lucide="credit-card" class="w-4 h-4"></i> Pay Deposit (RM ${data.deposit || 50})
+                    </button>
+                    <button onclick="handleCancel('${data.id}')" class="w-full py-3 rounded-xl border border-slate-200 text-slate-500 font-bold text-xs hover:bg-slate-50 transition">
+                        Cancel Reservation
+                    </button>
+                </div>`;
+        }
+        // --- PENDING VERIFICATION ---
+        else if (currentView === 'upcoming' && data.status === 'pending_verification') {
             actionBtn = `
                 <button onclick="handleCancel('${data.id}')" class="w-full mt-4 py-3 rounded-xl border border-red-100 text-red-600 font-bold text-xs bg-red-50 hover:bg-red-100 transition">
                     Cancel Reservation
                 </button>`;
         }
         
+        // --- COMPLETED (REVIEW) ---
         if (data.status === 'completed' && !data.isReviewed) {
             actionBtn = `
                 <button onclick="openReviewModal('${data.id}', '${data.restaurantName}', '${data.restaurantId}')" class="w-full mt-4 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-black transition flex justify-center items-center gap-2">
@@ -161,7 +180,7 @@ function renderBookings() {
                 <div>
                     <h3 class="font-bold text-slate-900 text-lg leading-tight">${data.restaurantName}</h3>
                     <p class="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                        <i data-lucide="receipt" class="w-3 h-3"></i> RM ${parseFloat(data.totalCost || 0).toFixed(2)}
+                        <i data-lucide="receipt" class="w-3 h-3"></i> Food: RM ${parseFloat(data.estimatedFoodCost || data.totalCost || 0).toFixed(2)}
                     </p>
                 </div>
                 <span class="${statusColor} px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border">

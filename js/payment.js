@@ -48,10 +48,8 @@ async function loadBookingFromFirestore(id) {
 }
 
 function renderBookingUI() {
-    // FIX: Use deposit (RM 50) if available, otherwise fallback (legacy support)
     const depositAmount = bookingData.deposit || 50.00;
     
-    // UI displays Food info but emphasizes Deposit
     const items = bookingData.menuItems || [];
     let itemsHtml = items.length > 0 
         ? items.map(item => `<p class="flex justify-between text-xs text-slate-500"><span>${item.qty}x ${item.name}</span> <span>RM ${(item.price * item.qty).toFixed(2)}</span></p>`).join('')
@@ -75,7 +73,6 @@ function renderBookingUI() {
         `;
     }
     
-    // Main Display shows Deposit
     if(totalDisplay) {
         totalDisplay.innerText = `RM ${parseFloat(depositAmount).toFixed(2)}`;
     }
@@ -98,11 +95,11 @@ if(fpxBtn) {
         fpxBtn.innerHTML = "Connecting...";
         fpxBtn.disabled = true;
 
-        // FIX: Ensure we charge ONLY the deposit
         const chargeAmount = bookingData.deposit || 50.00;
         const amountInCents = Math.round(parseFloat(chargeAmount) * 100); 
 
-        const returnUrl = `${window.location.origin}${window.location.pathname}?id=${bookingId}&status=success`;
+        // FIX: Removed '&status=success' so we don't fake the result
+        const returnUrl = `${window.location.origin}${window.location.pathname}?id=${bookingId}`;
 
         const params = new URLSearchParams();
         params.append('userSecretKey', TOYYIB_SECRET_KEY);
@@ -152,25 +149,40 @@ if(fpxBtn) {
 
 async function checkReturnFromPayment() {
     const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get('status');
+    
+    // FIX: Look for 'status_id' from ToyyibPay
+    // 1 = Success, 3 = Fail, 2 = Pending
+    const statusId = urlParams.get('status_id');
     const billCode = urlParams.get('billcode');
 
-    if (status === 'success' && bookingId) {
-        if(loadingOverlay) loadingOverlay.classList.remove('hidden');
-        try {
-            const docRef = doc(db, "bookings", bookingId);
-            await updateDoc(docRef, {
-                status: 'confirmed',
-                paymentMethod: 'toyyibpay',
-                billCode: billCode || 'unknown',
-                amountPaid: 50.00 // Mark that 50 was paid
-            });
-            showToast("Deposit Paid! Booking Confirmed.");
-            setTimeout(() => window.location.href = 'customer-bookings.html', 1500);
-        } catch (error) {
-            console.error(error);
-            showToast("Update failed", "error");
-            if(loadingOverlay) loadingOverlay.classList.add('hidden');
+    // Only process if we have a statusId
+    if (statusId && bookingId) {
+        
+        if (statusId === '1') {
+            // --- SUCCESS CASE ---
+            if(loadingOverlay) loadingOverlay.classList.remove('hidden');
+            try {
+                const docRef = doc(db, "bookings", bookingId);
+                await updateDoc(docRef, {
+                    status: 'confirmed',
+                    paymentMethod: 'toyyibpay',
+                    billCode: billCode || 'unknown',
+                    amountPaid: 50.00
+                });
+                showToast("Deposit Paid! Booking Confirmed.");
+                setTimeout(() => window.location.href = 'customer-bookings.html', 1500);
+            } catch (error) {
+                console.error(error);
+                showToast("Update failed", "error");
+                if(loadingOverlay) loadingOverlay.classList.add('hidden');
+            }
+        } else if (statusId === '3') {
+            // --- FAILURE CASE ---
+            showToast("Payment Failed or Cancelled", "error");
+            // Do NOT update database status to confirmed
+        } else {
+            // --- PENDING / UNKNOWN ---
+            showToast("Payment Pending or Unknown Status", "info");
         }
     }
 }
