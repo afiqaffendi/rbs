@@ -63,7 +63,7 @@ async function findOwnerRestaurant(uid) {
     }
 }
 
-// --- 2. Main Dashboard Logic ---
+// --- 2. Main Dashboard Logic (FIXED) ---
 async function updateDashboard(range) {
     if (!currentRestaurantId) return;
 
@@ -71,17 +71,15 @@ async function updateDashboard(range) {
     bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading data...</td></tr>';
     popularList.innerHTML = '<p class="text-xs text-slate-400 text-center mt-10">Analyzing orders...</p>';
 
-    // 1. Calculate Date Range (Strings YYYY-MM-DD for comparison)
+    // 1. Calculate Date Range
     const { startDate, endDate } = getDateRange(range);
 
     try {
-        // 2. Fetch Bookings in Range
-        // Note: Using string comparison for dates works (e.g., "2023-10-01" <= "2023-10-05")
+        // --- FIX STARTS HERE ---
+        // We only query by Restaurant ID to avoid "Missing Index" errors in Firebase
         const q = query(
             collection(db, "bookings"), 
-            where("restaurantId", "==", currentRestaurantId),
-            where("bookingDate", ">=", startDate),
-            where("bookingDate", "<=", endDate)
+            where("restaurantId", "==", currentRestaurantId)
         );
 
         const snapshot = await getDocs(q);
@@ -89,9 +87,13 @@ async function updateDashboard(range) {
         
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Only include relevant bookings (exclude cancelled/rejected for revenue)
-            bookings.push({ id: doc.id, ...data });
+            // We filter by date manually here in JavaScript
+            // This is safer and doesn't require complex database configuration
+            if (data.bookingDate >= startDate && data.bookingDate <= endDate) {
+                bookings.push({ id: doc.id, ...data });
+            }
         });
+        // --- FIX ENDS HERE ---
 
         // 3. Process Data
         const confirmedBookings = bookings.filter(b => ['confirmed', 'completed'].includes(b.status));
@@ -100,11 +102,11 @@ async function updateDashboard(range) {
         updateStats(confirmedBookings);
         renderChart(confirmedBookings, range);
         renderPopularFood(confirmedBookings);
-        renderTable(bookings); // Show all (even cancelled) in the list for reference
+        renderTable(bookings); 
 
     } catch (error) {
         console.error("Dashboard Error:", error);
-        bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-red-400">Failed to load data</td></tr>';
+        bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-red-400">Failed to load data. Check console.</td></tr>';
     }
 }
 
@@ -125,9 +127,16 @@ function getDateRange(range) {
         start.setDate(1); 
     }
 
+    // Return YYYY-MM-DD strings to match your database format
+    // Using local time to ensure "today" is accurate to the user
+    const toLocalISO = (date) => {
+        const offset = date.getTimezoneOffset() * 60000;
+        return new Date(date - offset).toISOString().split('T')[0];
+    };
+
     return {
-        startDate: start.toISOString().split('T')[0],
-        endDate: end.toISOString().split('T')[0]
+        startDate: toLocalISO(start),
+        endDate: toLocalISO(end)
     };
 }
 
@@ -137,8 +146,6 @@ function updateStats(bookings) {
 
     bookings.forEach(b => {
         totalGuests += parseInt(b.pax || 0);
-        // Revenue Calc: (Total Cost - Booking Fee if applicable)
-        // Assuming b.totalCost is the full amount paid
         totalRev += parseFloat(b.totalCost || 0);
     });
 
@@ -180,19 +187,17 @@ function initChart() {
 
 function renderChart(bookings, range) {
     const dataMap = {};
-    const labels = [];
     
-    // Sort bookings by time/date to ensure chart is chronological
+    // Sort bookings by time/date
     bookings.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
 
     if (range === 'daily') {
         // Group by Hour
         const hours = ['9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM','9 PM','10 PM'];
-        hours.forEach(h => dataMap[h] = 0); // Init
+        hours.forEach(h => dataMap[h] = 0); 
         
         bookings.forEach(b => {
             if(b.timeSlot) {
-                // specific logic to map "13:00" or "1:00 PM" to buckets
                 const hour = formatTimeSlotToHour(b.timeSlot);
                 if(dataMap[hour] !== undefined) {
                     dataMap[hour] += parseFloat(b.totalCost || 0);
@@ -206,17 +211,11 @@ function renderChart(bookings, range) {
     } else {
         // Group by Date (Weekly/Monthly)
         bookings.forEach(b => {
-            // "2023-10-25" -> "Oct 25"
             const dateObj = new Date(b.bookingDate);
             const label = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            
             dataMap[label] = (dataMap[label] || 0) + parseFloat(b.totalCost || 0);
         });
 
-        // Fill in missing dates if needed, or just show dates with sales
-        // For simplicity, showing keys sorted
-        const sortedLabels = Object.keys(dataMap).sort((a,b) => new Date(a) - new Date(b)); // Rough sort
-        
         revenueChart.data.labels = Object.keys(dataMap);
         revenueChart.data.datasets[0].data = Object.values(dataMap);
     }
@@ -225,14 +224,25 @@ function renderChart(bookings, range) {
 }
 
 function formatTimeSlotToHour(timeSlot) {
-    // Basic parser: "13:00" -> "1 PM"
-    // Assuming format is HH:mm or HH:mm AM/PM
-    // This is a simplified mapper
-    const t = parseInt(timeSlot.split(':')[0]);
-    if(t === 9 || t === 21) return t > 12 ? '9 PM' : '9 AM';
-    if(t > 12) return `${t-12} PM`;
-    if(t === 12) return '12 PM';
-    return `${t} AM`;
+    // Robust parser that handles "13:00" AND "01:00 PM"
+    if (!timeSlot) return "9 AM";
+    
+    // Check if it has AM/PM
+    const is12Hour = timeSlot.includes('AM') || timeSlot.includes('PM');
+    
+    if (is12Hour) {
+        // Extract hour: "02:00 PM" -> 02
+        let [time, modifier] = timeSlot.split(' ');
+        let [hour, min] = time.split(':');
+        return `${parseInt(hour)} ${modifier}`;
+    } else {
+        // 24 Hour format: "13:00" -> "1 PM"
+        const t = parseInt(timeSlot.split(':')[0]);
+        if(t === 9 || t === 21) return t > 12 ? '9 PM' : '9 AM';
+        if(t > 12) return `${t-12} PM`;
+        if(t === 12) return '12 PM';
+        return `${t} AM`;
+    }
 }
 
 // --- 5. Popular Food Logic ---
@@ -240,9 +250,6 @@ function renderPopularFood(bookings) {
     const itemCounts = {};
 
     bookings.forEach(booking => {
-        // Assuming booking has 'items' array. If strictly 'booking' type without items, 
-        // we might need to fetch sub-collection. 
-        // Based on typical structure: booking.items = [{name: 'Burger', quantity: 2}]
         if (booking.items && Array.isArray(booking.items)) {
             booking.items.forEach(item => {
                 const name = item.name;
@@ -252,10 +259,9 @@ function renderPopularFood(bookings) {
         }
     });
 
-    // Convert to Array & Sort
     const sortedItems = Object.entries(itemCounts)
-        .sort((a, b) => b[1] - a[1]) // Descending
-        .slice(0, 5); // Top 5
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
 
     popularList.innerHTML = '';
 
@@ -301,11 +307,7 @@ function renderTable(data) {
     }
     emptyState.classList.add('hidden');
 
-    // Sort by date/time (newest first)
-    data.sort((a, b) => {
-        // Fallback sort if createdAt doesn't exist
-        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-    });
+    data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     data.forEach(item => {
         const row = document.createElement('tr');
@@ -314,7 +316,6 @@ function renderTable(data) {
         row.className = `border-b border-gray-50 last:border-none transition cursor-pointer ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'}`;
         row.onclick = () => window.location.href = `owner-order-details.html?id=${item.id}`;
 
-        // Status Badge Logic
         let badgeClass = 'bg-gray-100 text-gray-600';
         if(item.status === 'confirmed') badgeClass = 'bg-green-100 text-green-700';
         if(item.status === 'cancelled') badgeClass = 'bg-red-100 text-red-600';
@@ -359,7 +360,6 @@ function renderTable(data) {
     if(window.lucide) lucide.createIcons();
 }
 
-// --- 7. Sidebar Inventory Logic (Preserved) ---
 function loadInventoryUI(inventory) {
     if(!inventory) return;
     if(document.getElementById('qty2pax')) document.getElementById('qty2pax').value = inventory["2pax"] || 0;
@@ -391,7 +391,6 @@ window.updateBookingStatus = async (id, newStatus) => {
     try {
         await updateDoc(doc(db, "bookings", id), { status: newStatus });
         showToast(`Booking marked as ${newStatus}`);
-        // Refresh current view
         if(timeFilter) updateDashboard(timeFilter.value);
     } catch (error) {
         console.error(error);
@@ -399,7 +398,6 @@ window.updateBookingStatus = async (id, newStatus) => {
     }
 };
 
-// Logout
 document.getElementById('logout-btn').onclick = () => {
     signOut(auth).then(() => window.location.href = 'index.html');
 };
