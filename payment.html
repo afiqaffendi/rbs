@@ -2,51 +2,84 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Deposit Payment - DTEBS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { -webkit-tap-highlight-color: transparent; }
+        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
+    </style>
 </head>
-<body class="bg-slate-50 font-sans flex justify-center items-center min-h-screen">
+<body class="bg-slate-100 font-sans text-slate-800 flex justify-center items-center min-h-screen p-0 md:p-4">
 
-    <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-slate-100 relative">
-        <a href="customer-home.html" class="absolute top-4 left-4 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition">
-            <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
-        </a>
+    <div class="w-full h-screen md:w-[375px] md:h-[812px] bg-white md:rounded-[2.5rem] overflow-hidden md:border-[8px] md:border-slate-900 relative shadow-2xl flex flex-col ring-1 ring-black/5">
 
-        <div class="text-center mb-6 mt-4">
-            <div class="w-16 h-16 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i data-lucide="credit-card" class="w-8 h-8"></i>
+        <div class="flex items-center justify-between p-5 pb-0">
+            <a href="customer-home.html" class="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition">
+                <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+            </a>
+            <div class="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Secure Checkout</div>
+            <div class="w-9"></div> </div>
+
+        <div class="flex-1 overflow-y-auto no-scrollbar p-6">
+            
+            <div class="text-center mb-8 mt-4">
+                <div class="w-20 h-20 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-teal-100">
+                    <i data-lucide="credit-card" class="w-8 h-8"></i>
+                </div>
+                <h1 class="text-xl font-bold text-slate-900">Deposit Payment</h1>
+                <p class="text-sm text-slate-500 mt-1">Secure your booking instantly</p>
             </div>
-            <h1 class="text-xl font-bold text-slate-900">Secure Deposit Payment</h1>
-            <p class="text-sm text-slate-500">Confirm your booking with a deposit</p>
-        </div>
 
-        <div id="booking-details" class="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-700 space-y-2 mb-6">
-            <p class="text-center text-slate-400 italic">Loading details...</p>
-        </div>
-
-        <div class="flex justify-between items-end mb-6 border-t border-slate-100 pt-4">
-            <div>
-                <p class="text-xs text-slate-400 font-bold uppercase">Total Deposit</p>
-                <p class="text-xs text-slate-400">Balance paid at venue</p>
+            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-sm mb-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-16 h-16 bg-white rounded-bl-full opacity-50"></div>
+                
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Booking Details</h3>
+                <div id="booking-details" class="text-sm text-slate-700 space-y-2.5">
+                    <p class="text-center text-slate-400 italic text-xs">Loading details...</p>
+                </div>
             </div>
-            <h2 id="display-total" class="text-3xl font-bold text-slate-900">RM 50.00</h2>
+
+            <div class="mb-8">
+                <div class="flex justify-between items-end border-b border-slate-100 pb-4 mb-4">
+                    <div>
+                        <p class="text-xs text-slate-400 font-bold uppercase">Total Deposit</p>
+                        <p class="text-[10px] text-slate-400">Paid securely via FPX</p>
+                    </div>
+                    <h2 id="display-total" class="text-3xl font-bold text-slate-900 tracking-tight">RM 50.00</h2>
+                </div>
+                
+                <p class="text-[10px] text-center text-slate-400 bg-slate-50 py-2 rounded-lg border border-slate-100">
+                    <i data-lucide="info" class="w-3 h-3 inline align-middle mr-1"></i>
+                    Balance paid at restaurant counter
+                </p>
+            </div>
+
         </div>
 
-        <button id="pay-fpx-btn" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2">
-            <i data-lucide="lock" class="w-5 h-5"></i> Pay Securely via FPX
-        </button>
-
-        <div class="mt-6 text-center">
-            <p class="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                <i data-lucide="shield-check" class="w-3 h-3"></i> Secured by ToyyibPay
-            </p>
+        <div class="p-5 pb-8 bg-white border-t border-slate-50 shadow-[0_-5px_20px_rgba(0,0,0,0.02)] z-10">
+            <button id="pay-fpx-btn" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2 group">
+                <i data-lucide="lock" class="w-5 h-5 group-hover:text-teal-400 transition-colors"></i> 
+                <span>Pay Securely</span>
+            </button>
+            
+            <div class="mt-4 text-center">
+                <p class="text-[10px] text-slate-300 flex items-center justify-center gap-1.5 font-medium">
+                    <i data-lucide="shield-check" class="w-3 h-3"></i> Encrypted Payment by ToyyibPay
+                </p>
+            </div>
         </div>
         
-        <div id="loading-overlay" class="absolute inset-0 bg-white/90 z-50 hidden flex flex-col items-center justify-center rounded-2xl">
-            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-teal-600 mb-3"></i>
-            <p class="text-sm font-bold text-slate-600">Verifying Payment...</p>
+        <div id="loading-overlay" class="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
+            <div class="bg-white p-4 rounded-full shadow-lg mb-4 border border-slate-100">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-teal-600"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-800">Processing Payment...</p>
+            <p class="text-xs text-slate-400 mt-1">Please do not close this window</p>
         </div>
 
     </div>
