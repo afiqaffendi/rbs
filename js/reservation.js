@@ -49,10 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const today = new Date().toISOString().split('T')[0];
     if(dateInput) dateInput.setAttribute('min', today);
 
-    // Restore state if returning from menu
     restoreSessionState();
     
-    // Init total display to base deposit
+    // Always show fixed deposit on load
     if(totalCostDisplay) totalCostDisplay.innerText = baseDeposit.toFixed(2);
 });
 
@@ -70,7 +69,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- NEW: NAVIGATION & STATE ---
+// --- STATE & NAVIGATION ---
 function saveSessionState() {
     const state = {
         restaurantId: restaurantId,
@@ -107,7 +106,6 @@ function restoreSessionState() {
     }
 }
 
-// Expose to window
 window.goToMenuSelection = () => {
     saveSessionState();
     window.location.href = `menu-selection.html?id=${restaurantId}`;
@@ -172,13 +170,10 @@ async function checkAvailability(timeSlot) {
         );
 
         const snapshot = await getDocs(q);
-        
         const occupiedTables = { "2pax": 0, "4pax": 0, "6pax": 0, "8pax": 0, "10pax": 0 };
         snapshot.forEach(doc => {
             const data = doc.data();
-            if (data.assignedTableSize) {
-                occupiedTables[data.assignedTableSize] = (occupiedTables[data.assignedTableSize] || 0) + 1;
-            }
+            if (data.assignedTableSize) occupiedTables[data.assignedTableSize] = (occupiedTables[data.assignedTableSize] || 0) + 1;
         });
 
         const tableSizes = [2, 4, 6, 8, 10]; 
@@ -200,10 +195,10 @@ async function checkAvailability(timeSlot) {
         if (foundSize) {
             assignedTableSize = foundSize; 
             bookBtn.disabled = false;
-            bookBtn.innerText = "Pay Deposit & Confirm";
+            bookBtn.innerText = "Pay Deposit (RM 50)";
             bookBtn.classList.add('bg-slate-900');
             bookBtn.classList.remove('bg-slate-300');
-            showToast(`Table for ${foundSize.replace('pax','')} available!`, "success");
+            showToast(`Table available!`, "success");
         } else {
             assignedTableSize = null;
             bookBtn.innerText = "Full Capacity";
@@ -224,10 +219,6 @@ window.handleBooking = async () => {
     
     let menuTotal = 0;
     finalItems.forEach(i => menuTotal += (i.qty * i.price));
-    
-    // LOGIC CHANGE: 
-    // totalCost = Total Value of Food (Saved for records)
-    // deposit = Fixed RM 50 (This is what they pay now)
 
     if(bookBtn) {
         bookBtn.disabled = true;
@@ -244,10 +235,10 @@ window.handleBooking = async () => {
             pax: parseInt(pax),
             menuItems: finalItems,
             
-            // --- UPDATED FINANCIAL FIELDS ---
-            estimatedFoodCost: menuTotal, // Just food
-            deposit: baseDeposit,         // Just 50
-            totalCost: menuTotal,         // Keeping totalCost as Food Value for Dashboard consistency
+            // --- UPDATED FINANCIALS ---
+            estimatedFoodCost: menuTotal, // Only Food
+            deposit: baseDeposit,         // Only RM 50
+            totalCost: baseDeposit + menuTotal, // Total Value (Food + Deposit)
             
             assignedTableSize: assignedTableSize, 
             status: "pending_payment", 
@@ -257,7 +248,7 @@ window.handleBooking = async () => {
         const docRef = await addDoc(collection(db, "bookings"), bookingData);
         sessionStorage.removeItem('dtebs_booking_draft');
         
-        // Redirect to payment. Payment logic will need to be updated to charge 'deposit'
+        // Go to payment
         window.location.href = `payment.html?id=${docRef.id}`; 
 
     } catch (error) {
@@ -284,13 +275,12 @@ function updateCartSummaryUI() {
         cartSummaryContainer.classList.remove('hidden');
         summaryBadge.innerText = totalQty;
         summaryItemsText.innerText = `${totalQty} Item${totalQty > 1 ? 's' : ''} Selected`;
-        // Black box shows FOOD cost
         summaryTotalCost.innerText = `RM ${totalMenuCost.toFixed(2)}`;
     } else {
         cartSummaryContainer.classList.add('hidden');
     }
     
-    // Bottom bar ALWAYS shows Deposit (50)
+    // Bottom bar ALWAYS shows 50.00
     if(totalCostDisplay) {
         totalCostDisplay.innerText = baseDeposit.toFixed(2);
     }

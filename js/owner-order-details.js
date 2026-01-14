@@ -22,13 +22,11 @@ const els = {
     btnCancel: document.getElementById('btn-cancel')
 };
 
-// 1. Auth Check
 onAuthStateChanged(auth, (user) => {
     if (!user) window.location.href = 'index.html';
     else loadBookingDetails();
 });
 
-// 2. Fetch Data
 async function loadBookingDetails() {
     if (!bookingId) {
         alert("No Booking ID found.");
@@ -51,7 +49,6 @@ async function loadBookingDetails() {
     }
 }
 
-// 3. Render Data
 function renderDetails(data) {
     els.id.innerText = `ID: ${bookingId}`;
     els.customer.innerText = data.customerName || "Guest";
@@ -60,13 +57,13 @@ function renderDetails(data) {
     els.pax.innerText = `${data.pax} People`;
     els.table.innerText = data.assignedTableSize ? `${data.assignedTableSize.replace('pax','')} Pax Table` : "Auto-Assigned";
     
-    // Status Badge Logic
+    // Status Badge
     const status = data.status || 'pending';
     els.status.innerText = status.toUpperCase();
     if(status === 'confirmed') els.status.className = "px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-bold shadow-md";
     else if(status === 'completed') {
         els.status.className = "px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold";
-        els.btnComplete.classList.add('hidden'); // Hide button if already done
+        els.btnComplete.classList.add('hidden');
         els.btnCancel.classList.add('hidden');
     }
     else els.status.className = "px-4 py-2 bg-gray-400 text-white rounded-lg text-sm font-bold";
@@ -75,15 +72,20 @@ function renderDetails(data) {
     els.menuList.innerHTML = '';
     let calculatedFoodTotal = 0;
 
-    if (data.menuItems && data.menuItems.length > 0) {
-        data.menuItems.forEach(item => {
-            const itemTotal = item.price * item.qty;
+    // Use 'menuItems' based on previous fixes
+    const items = data.menuItems || []; 
+
+    if (items.length > 0) {
+        items.forEach(item => {
+            const qty = parseInt(item.qty || item.quantity || 1);
+            const price = parseFloat(item.price || 0);
+            const itemTotal = price * qty;
             calculatedFoodTotal += itemTotal;
             
             els.menuList.innerHTML += `
                 <div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
                     <div class="flex items-center gap-3">
-                        <span class="bg-slate-200 text-slate-700 text-xs font-bold w-6 h-6 flex items-center justify-center rounded">${item.qty}x</span>
+                        <span class="bg-slate-200 text-slate-700 text-xs font-bold w-6 h-6 flex items-center justify-center rounded">${qty}x</span>
                         <span class="text-sm font-medium text-slate-700">${item.name}</span>
                     </div>
                     <span class="text-sm font-bold text-slate-900">RM ${itemTotal.toFixed(2)}</span>
@@ -94,22 +96,35 @@ function renderDetails(data) {
         els.menuList.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-slate-400 text-sm italic"><i data-lucide="coffee" class="w-8 h-8 mb-2 opacity-50"></i>No pre-order items.</div>`;
     }
 
-    // Money
-    els.foodTotal.innerText = `RM ${calculatedFoodTotal.toFixed(2)}`;
-    els.grandTotal.innerText = `RM ${(calculatedFoodTotal + 50).toFixed(2)}`;
+    // --- FINANCIAL SUMMARY (DEPOSIT LOGIC) ---
+    const depositPaid = parseFloat(data.deposit || 50.00); 
+    const foodCost = calculatedFoodTotal;
+    // Total value of the "visit" is Food + Deposit? 
+    // Or is the deposit PART of the food cost? 
+    // Usually: Total Bill = Food. You pay 50 now. You pay (Food - 50) later.
+    // If Food < 50, you usually don't get a refund, but let's assume Food > 50.
     
-    lucide.createIcons();
+    const balanceDue = Math.max(0, foodCost - depositPaid);
+
+    els.foodTotal.innerText = `RM ${foodCost.toFixed(2)}`;
+    
+    // We update the Grand Total element to show the BALANCE DUE, which is what the owner cares about collecting
+    els.grandTotal.innerHTML = `
+        <span class="text-xs text-slate-400 font-normal block">Total Food: RM ${foodCost.toFixed(2)}</span>
+        <span class="text-xs text-green-500 font-normal block">Paid Deposit: - RM ${depositPaid.toFixed(2)}</span>
+        <span class="text-xl text-red-600 font-bold block mt-1">Collect: RM ${balanceDue.toFixed(2)}</span>
+    `;
+    
+    if(window.lucide) lucide.createIcons();
 }
 
-// 4. Update Status Function
 window.updateStatus = async (newStatus) => {
     if(!confirm(`Are you sure you want to mark this as ${newStatus}?`)) return;
-    
     try {
         const docRef = doc(db, "bookings", bookingId);
         await updateDoc(docRef, { status: newStatus });
         alert("Status Updated!");
-        location.reload(); // Refresh page to see changes
+        location.reload(); 
     } catch (error) {
         console.error("Error updating:", error);
         alert("Failed to update status.");
