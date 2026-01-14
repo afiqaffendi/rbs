@@ -8,7 +8,7 @@ let currentRestaurant = null;
 let restaurantId = new URLSearchParams(window.location.search).get('id');
 let selectedDate = null;
 let selectedTime = null;
-let pax = 2; // Default guests
+let pax = 2; 
 let userUid = null;
 let cart = {}; 
 let baseDeposit = 50.00;
@@ -25,33 +25,32 @@ const bookBtn = document.getElementById('book-btn');
 const resNameEl = document.getElementById('res-name');
 const resAddrEl = document.getElementById('res-address');
 const resImageEl = document.getElementById('res-image');
-const menuContainer = document.getElementById('menu-container');
 const totalCostDisplay = document.getElementById('total-cost-display');
+
+// Cart Summary Elements (NEW)
+const cartSummaryContainer = document.getElementById('cart-summary-container');
+const summaryBadge = document.getElementById('summary-badge');
+const summaryItemsText = document.getElementById('summary-items-text');
+const summaryTotalCost = document.getElementById('summary-total-cost');
 
 // Countdown Elements
 const estimationCard = document.getElementById('estimation-card');
 const countdownDisplay = document.getElementById('countdown-display');
 const targetTimeDisplay = document.getElementById('target-time-display');
 
-// Gallery Elements
+// Gallery
 const gallerySection = document.getElementById('gallery-section');
 const galleryContainer = document.getElementById('gallery-container');
 const lightboxModal = document.getElementById('lightbox-modal');
 const lightboxImg = document.getElementById('lightbox-img');
 
-// Reviews Elements
-const reviewsContainer = document.getElementById('reviews-container');
-const avgRatingEl = document.getElementById('avg-rating');
-const reviewCountEl = document.getElementById('review-count');
-
 // --- 1. INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     const today = new Date().toISOString().split('T')[0];
-    if(dateInput) {
-        dateInput.setAttribute('min', today);
-        dateInput.value = today;
-        selectedDate = today;
-    }
+    if(dateInput) dateInput.setAttribute('min', today);
+
+    // Restore state if returning from menu
+    restoreSessionState();
 });
 
 onAuthStateChanged(auth, async (user) => {
@@ -61,15 +60,57 @@ onAuthStateChanged(auth, async (user) => {
         userUid = user.uid;
         if (restaurantId) {
             await loadRestaurantData(restaurantId);
-            loadReviews(restaurantId);
         } else {
-            alert("No restaurant selected!");
+            showToast("No restaurant selected!", "error");
             window.location.href = 'customer-home.html';
         }
     }
 });
 
-// --- 2. LOAD RESTAURANT DETAILS ---
+// --- NEW: NAVIGATION & STATE ---
+function saveSessionState() {
+    const state = {
+        restaurantId: restaurantId,
+        date: selectedDate,
+        time: selectedTime,
+        pax: pax,
+        cart: cart
+    };
+    sessionStorage.setItem('dtebs_booking_draft', JSON.stringify(state));
+}
+
+function restoreSessionState() {
+    const saved = sessionStorage.getItem('dtebs_booking_draft');
+    if (saved) {
+        const state = JSON.parse(saved);
+        if (state.restaurantId === restaurantId) {
+            if(state.date) {
+                selectedDate = state.date;
+                if(dateInput) dateInput.value = state.date;
+            }
+            if(state.time) selectedTime = state.time;
+            if(state.pax) pax = state.pax;
+            if(state.cart) cart = state.cart;
+            
+            if(paxDisplay) paxDisplay.innerText = pax;
+            updateCartSummaryUI();
+        }
+    } else {
+        if(dateInput) {
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.value = today;
+            selectedDate = today;
+        }
+    }
+}
+
+// CRITICAL: Expose to window for HTML button onclick
+window.goToMenuSelection = () => {
+    saveSessionState();
+    window.location.href = `menu-selection.html?id=${restaurantId}`;
+};
+
+// --- 2. LOAD DATA ---
 async function loadRestaurantData(id) {
     try {
         const docRef = doc(db, "restaurants", id);
@@ -86,8 +127,18 @@ async function loadRestaurantData(id) {
             }
             
             if(selectedDate) renderTimeSlots();
-            loadMenu(currentRestaurant.menuItems || []); 
             loadGallery(currentRestaurant.menuImages || []);
+            
+            // Restore Time Selection Visuals
+            if(selectedTime) {
+                setTimeout(() => {
+                    // Try to find and click the button to trigger availability check
+                    const allBtns = Array.from(slotsContainer.children);
+                    const btn = allBtns.find(b => b.innerText === selectedTime);
+                    if(btn) btn.click(); 
+                    else checkAvailability(selectedTime);
+                }, 500);
+            }
 
         } else {
             if(resNameEl) resNameEl.innerText = "Restaurant Not Found";
@@ -97,7 +148,7 @@ async function loadRestaurantData(id) {
     }
 }
 
-// --- 3. NEW LOGIC: TABLE AVAILABILITY ALGORITHM ---
+// --- 3. LOGIC ---
 async function checkAvailability(timeSlot) {
     updateSummary();
     
@@ -153,11 +204,11 @@ async function checkAvailability(timeSlot) {
             bookBtn.innerText = "Confirm Reservation";
             bookBtn.classList.add('bg-slate-900');
             bookBtn.classList.remove('bg-slate-300');
-            showMsg(`Table for ${foundSize.replace('pax','')} available! (${remaining} left)`, "text-green-600");
+            showToast(`Table for ${foundSize.replace('pax','')} available!`, "success");
         } else {
             assignedTableSize = null;
             bookBtn.innerText = "Full Capacity";
-            showMsg("No suitable tables available for this time.", "text-red-500");
+            showToast("No suitable tables available.", "error");
         }
 
     } catch (e) { 
@@ -166,10 +217,9 @@ async function checkAvailability(timeSlot) {
     }
 }
 
-// --- 4. HANDLE BOOKING SUBMISSION ---
 window.handleBooking = async () => {
-    if(!userUid) { showToast("Please login to book.", "error"); return; }
-    if(!assignedTableSize) { showToast("Please select a time slot.", "error"); return; }
+    if(!userUid) { showToast("Please login first.", "error"); return; }
+    if(!assignedTableSize) { showToast("Please select an available time.", "error"); return; }
 
     const finalItems = Object.values(cart).filter(i => i.qty > 0);
     let menuTotal = 0;
@@ -198,6 +248,7 @@ window.handleBooking = async () => {
         };
         
         const docRef = await addDoc(collection(db, "bookings"), bookingData);
+        sessionStorage.removeItem('dtebs_booking_draft');
         window.location.href = `payment.html?id=${docRef.id}`; 
 
     } catch (error) {
@@ -207,7 +258,32 @@ window.handleBooking = async () => {
     }
 };
 
-// --- 5. UI HELPER FUNCTIONS ---
+// --- 5. UI HELPERS ---
+
+function updateCartSummaryUI() {
+    let totalQty = 0;
+    let totalMenuCost = 0;
+
+    if (cart) {
+        Object.values(cart).forEach(item => {
+            totalQty += item.qty;
+            totalMenuCost += (item.qty * item.price);
+        });
+    }
+
+    if(totalQty > 0) {
+        cartSummaryContainer.classList.remove('hidden');
+        summaryBadge.innerText = totalQty;
+        summaryItemsText.innerText = `${totalQty} Item${totalQty > 1 ? 's' : ''} Selected`;
+        summaryTotalCost.innerText = `RM ${totalMenuCost.toFixed(2)}`;
+    } else {
+        cartSummaryContainer.classList.add('hidden');
+    }
+    
+    if(totalCostDisplay) {
+        totalCostDisplay.innerText = (baseDeposit + totalMenuCost).toFixed(2);
+    }
+}
 
 window.updatePax = (change) => {
     if (pax + change >= 1 && pax + change <= 20) {
@@ -260,14 +336,12 @@ function renderTimeSlots() {
             if (hours !== 12 && modifier === 'PM') hours += 12;
             return hours * 60 + minutes;
         };
-        
         let separator = hours.includes('-') ? '-' : 'to';
         const parts = hours.split(separator);
         if (parts.length !== 2) return []; 
         let start = parseTime(parts[0]);
         let end = parseTime(parts[1]);
         if(end <= start) end += 1440; 
-        
         let slots = [];
         while(start + 60 <= end) { 
             let displayStart = start % 1440;
@@ -275,7 +349,6 @@ function renderTimeSlots() {
             let mm = displayStart%60;
             let amp = h>=12 ? 'PM' : 'AM';
             let displayH = h%12 || 12;
-            
             slots.push(`${displayH}:${mm.toString().padStart(2,'0')} ${amp}`);
             start += 60; 
         }
@@ -286,7 +359,8 @@ function renderTimeSlots() {
 
     slots.forEach(time => {
         const btn = document.createElement('button');
-        btn.className = `py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ${selectedTime === time ? 'bg-slate-900 text-white shadow-md ring-2 ring-teal-500' : 'bg-white text-slate-600 hover:border-teal-500'}`;
+        const isSelected = (selectedTime === time);
+        btn.className = `py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ${isSelected ? 'bg-slate-900 text-white shadow-md ring-2 ring-teal-500' : 'bg-white text-slate-600 hover:border-teal-500'}`;
         btn.innerText = time;
         btn.onclick = () => {
             const allBtns = slotsContainer.querySelectorAll('button');
@@ -299,50 +373,6 @@ function renderTimeSlots() {
         };
         slotsContainer.appendChild(btn);
     });
-}
-
-function loadMenu(items) {
-    if(!menuContainer) return;
-    if (!items || items.length === 0) {
-        menuContainer.innerHTML = '<p class="text-sm text-slate-400 italic">No pre-order menu available.</p>';
-        return;
-    }
-    menuContainer.innerHTML = ''; 
-    items.forEach((item, index) => {
-        const itemId = `item-${index}`;
-        const card = document.createElement('div');
-        card.className = "flex justify-between items-center bg-white p-3 rounded-lg border border-slate-100 shadow-sm";
-        card.innerHTML = `
-            <div>
-                <h4 class="font-bold text-slate-800 text-sm">${item.name}</h4>
-                <p class="text-sm font-semibold text-teal-600 mt-1">RM ${parseFloat(item.price).toFixed(2)}</p>
-            </div>
-            <div class="flex items-center space-x-3">
-                <button onclick="updateCart('${itemId}', '${item.name}', ${item.price}, -1)" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">-</button>
-                <span id="qty-${itemId}" class="font-bold text-slate-800 w-4 text-center">0</span>
-                <button onclick="updateCart('${itemId}', '${item.name}', ${item.price}, 1)" class="w-8 h-8 rounded-full bg-slate-900 text-white font-bold hover:bg-slate-800">+</button>
-            </div>
-        `;
-        menuContainer.appendChild(card);
-    });
-}
-
-window.updateCart = (id, name, price, change) => {
-    if (!cart[id]) cart[id] = { name, price, qty: 0 };
-    cart[id].qty += change;
-    if (cart[id].qty < 0) cart[id].qty = 0;
-    const qtyEl = document.getElementById(`qty-${id}`);
-    if(qtyEl) qtyEl.innerText = cart[id].qty;
-    calculateTotal();
-};
-
-function calculateTotal() {
-    let menuTotal = 0;
-    Object.values(cart).forEach(item => {
-        menuTotal += item.qty * item.price;
-    });
-    const total = baseDeposit + menuTotal;
-    if(totalCostDisplay) totalCostDisplay.innerText = total.toFixed(2);
 }
 
 function loadGallery(images) {
@@ -362,31 +392,6 @@ function loadGallery(images) {
 }
 window.closeLightbox = () => lightboxModal.classList.add('hidden');
 
-async function loadReviews(restId) {
-    try {
-        const q = query(collection(db, "reviews"), where("restaurantId", "==", restId));
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-            if(reviewCountEl) reviewCountEl.innerText = "0 Reviews";
-            if(avgRatingEl) avgRatingEl.innerText = "New";
-            return;
-        }
-        let totalStars = 0;
-        let reviewsHTML = '';
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            totalStars += data.rating;
-            let starsDisplay = '';
-            for(let i=0; i<5; i++) starsDisplay += `<i data-lucide="star" class="w-3 h-3 ${i < data.rating ? 'fill-yellow-400 text-yellow-400' : 'text-slate-200'}"></i>`;
-            reviewsHTML += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-100"><div class="flex items-center gap-1 mb-2">${starsDisplay}</div><p class="text-sm text-slate-700">"${data.comment}"</p></div>`;
-        });
-        const avg = (totalStars / snapshot.size).toFixed(1);
-        if(avgRatingEl) avgRatingEl.innerText = avg;
-        if(reviewCountEl) reviewCountEl.innerText = `${snapshot.size} Reviews`;
-        if(reviewsContainer) { reviewsContainer.innerHTML = reviewsHTML; if(window.lucide) lucide.createIcons(); }
-    } catch (e) { console.error(e); }
-}
-
 function showMsg(text, color) {
     if(availabilityMsg) {
         availabilityMsg.innerText = text;
@@ -401,47 +406,36 @@ function updateSummary() {
 
 function updateEstimation(timeStr) {
     if (!estimationCard || !countdownDisplay) return;
-
     estimationCard.classList.remove('hidden');
     targetTimeDisplay.innerText = timeStr; 
-
     if (!selectedDate) return;
-    
     const [time, modifier] = timeStr.split(' ');
     let [hours, minutes] = time.split(':');
     hours = parseInt(hours);
     if (hours === 12 && modifier === 'AM') hours = 0;
     if (hours !== 12 && modifier === 'PM') hours += 12;
-
     const targetDate = new Date(selectedDate);
     targetDate.setHours(hours, parseInt(minutes), 0, 0);
-
     if (countdownInterval) clearInterval(countdownInterval);
-
     const updateTimer = () => {
         const now = new Date().getTime();
         const distance = targetDate.getTime() - now;
-
         if (distance < 0) {
             clearInterval(countdownInterval);
             countdownDisplay.innerText = "NOW";
             countdownDisplay.classList.add('text-green-400');
             return;
         }
-
         const days = Math.floor(distance / (1000 * 60 * 60 * 24));
         const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const s = Math.floor((distance % (1000 * 60)) / 1000);
-
         if (days > 0) {
             countdownDisplay.innerText = `${days}d ${h}h ${m}m`;
         } else {
-            countdownDisplay.innerText = 
-                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            countdownDisplay.innerText = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
     };
-
     updateTimer(); 
     countdownInterval = setInterval(updateTimer, 1000);
 }
