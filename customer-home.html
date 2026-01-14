@@ -10,6 +10,10 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         body { -webkit-tap-highlight-color: transparent; }
+        
+        /* New Mobile-style Slide Up Animation */
+        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 flex justify-center items-center min-h-screen p-0 md:p-4">
@@ -20,7 +24,7 @@
             <div class="flex justify-between items-center mb-4">
                 <div>
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Welcome back</p>
-                    <h1 class="text-2xl font-bold text-slate-900">Find a Restaurants</h1>
+                    <h1 class="text-2xl font-bold text-slate-900">Find a Restaurant</h1>
                 </div>
                 <button id="logout-btn" class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
@@ -58,12 +62,32 @@
             </button>
         </div>
 
+        <div id="reviews-modal" class="absolute inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex items-end justify-center" onclick="closeReviewsModal()">
+            
+            <div class="bg-slate-50 w-full h-[85%] rounded-t-[2rem] shadow-2xl flex flex-col animate-slide-up overflow-hidden" onclick="event.stopPropagation()">
+                
+                <div class="p-5 bg-white border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg" id="reviews-modal-title">Reviews</h3>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-wide">Customer Feedback</p>
+                    </div>
+                    <button onclick="closeReviewsModal()" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                
+                <div id="reviews-modal-content" class="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar">
+                    </div>
+            </div>
+        </div>
+
     </div>
 
     <script type="module" src="js/customer-home.js"></script>
     <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
+        document.addEventListener('DOMContentLoaded', () => {
+            if(window.lucide) lucide.createIcons();
+        });
     </script>
 </body>
 </html>
