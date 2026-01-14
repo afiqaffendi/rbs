@@ -14,6 +14,12 @@
         /* Smooth animation for details dropdown */
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
+        
+        /* Custom Scrollbar for Popular Food List */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body class="bg-gray-50 text-slate-900">
@@ -21,7 +27,6 @@
     <div class="flex h-screen overflow-hidden">
         
         <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex flex-col shadow-2xl">
-            
             <div class="p-6 border-b border-slate-800 flex justify-between items-center">
                 <div class="flex items-center gap-3">
                     <div class="bg-teal-500 p-2 rounded-lg">
@@ -38,15 +43,12 @@
             </div>
 
             <nav class="flex-1 p-4 space-y-2 overflow-y-auto no-scrollbar">
-                
                 <a href="owner-dashboard.html" class="flex items-center gap-3 px-4 py-3 bg-white/10 text-white rounded-xl font-medium border-l-4 border-teal-500">
                     <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
                 </a>
-
                 <a href="owner-menu.html" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition font-medium">
                     <i data-lucide="utensils" class="w-5 h-5"></i> Menu Manager
                 </a>
-                
                 <a href="owner-profile.html" class="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition font-medium">
                     <i data-lucide="store" class="w-5 h-5"></i> Restaurant Profile
                 </a>
@@ -59,42 +61,34 @@
                             </span>
                             <i data-lucide="chevron-down" class="w-4 h-4 transition-transform group-open:rotate-180"></i>
                         </summary>
-                        
                         <div class="px-4 pb-4 pt-3 space-y-3 bg-slate-800/50 rounded-xl mt-2 mx-2 border border-slate-700/50">
                             <p class="text-[10px] text-slate-500 font-medium uppercase mb-2">Enter Table Quantities</p>
-                            
                             <div class="flex items-center justify-between gap-2">
                                 <label class="text-xs text-slate-300">2 Pax</label>
                                 <input type="number" id="qty2pax" class="w-16 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center text-white text-sm focus:border-teal-500 outline-none" placeholder="0" min="0">
                             </div>
-
                             <div class="flex items-center justify-between gap-2">
                                 <label class="text-xs text-slate-300">4 Pax</label>
                                 <input type="number" id="qty4pax" class="w-16 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center text-white text-sm focus:border-teal-500 outline-none" placeholder="0" min="0">
                             </div>
-
                             <div class="flex items-center justify-between gap-2">
                                 <label class="text-xs text-slate-300">6 Pax</label>
                                 <input type="number" id="qty6pax" class="w-16 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center text-white text-sm focus:border-teal-500 outline-none" placeholder="0" min="0">
                             </div>
-
                             <div class="flex items-center justify-between gap-2">
                                 <label class="text-xs text-slate-300">8 Pax</label>
                                 <input type="number" id="qty8pax" class="w-16 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center text-white text-sm focus:border-teal-500 outline-none" placeholder="0" min="0">
                             </div>
-
                             <div class="flex items-center justify-between gap-2">
                                 <label class="text-xs text-slate-300">10+ Pax</label>
                                 <input type="number" id="qty10pax" class="w-16 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center text-white text-sm focus:border-teal-500 outline-none" placeholder="0" min="0">
                             </div>
-
                             <button onclick="saveTableConfig()" class="w-full mt-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-2 rounded-lg transition shadow-lg">
                                 Update Inventory
                             </button>
                         </div>
                     </details>
                 </div>
-
             </nav>
 
             <div class="p-4 border-t border-slate-800">
@@ -129,23 +123,23 @@
                 </div>
             </header>
 
-            <div class="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8">
+            <div class="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6">
                 
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div class="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
                     <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Performance Summary</h2>
-                        <p class="text-slate-500 text-sm">Real-time metrics for your selected date</p>
+                        <h2 class="text-2xl font-bold text-slate-900">Dashboard Analytics</h2>
+                        <p class="text-slate-500 text-sm">Overview of your restaurant's performance</p>
                     </div>
                     
-                    <div class="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                        <div class="relative">
-                            <i data-lucide="calendar" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
-                            <input type="date" id="filter-date" class="pl-10 pr-4 py-2 bg-transparent text-sm font-bold text-slate-700 outline-none border-none focus:ring-0 cursor-pointer">
+                    <div class="relative min-w-[160px]">
+                        <select id="time-filter" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 pl-4 pr-10 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm cursor-pointer hover:border-teal-500 transition-colors">
+                            <option value="daily">📅 Today</option>
+                            <option value="weekly">📅 This Week</option>
+                            <option value="monthly">📅 This Month</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
                         </div>
-                        <div class="h-6 w-px bg-gray-200"></div>
-                        <button id="btn-refresh" class="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition" title="Refresh Data">
-                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                        </button>
                     </div>
                 </div>
 
@@ -153,9 +147,9 @@
                     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
                         <div class="absolute right-0 top-0 w-24 h-24 bg-teal-50 rounded-bl-full -mr-4 -mt-4 transition group-hover:scale-110"></div>
                         <p class="text-xs font-bold text-slate-400 uppercase tracking-wider relative z-10">Total Revenue</p>
-                        <h3 class="text-3xl font-bold text-slate-900 mt-2 relative z-10" id="stat-revenue">RM 0.00</h3>
+                        <h3 class="text-3xl font-bold text-slate-900 mt-2 relative z-10" id="total-revenue-badge">RM 0.00</h3>
                         <div class="flex items-center gap-1 text-teal-600 text-xs font-bold mt-2 relative z-10">
-                            <i data-lucide="trending-up" class="w-3 h-3"></i> Confirmed Bookings
+                            <i data-lucide="trending-up" class="w-3 h-3"></i> Period Total
                         </div>
                     </div>
 
@@ -168,26 +162,47 @@
 
                     <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
                         <div class="absolute right-0 top-0 w-24 h-24 bg-purple-50 rounded-bl-full -mr-4 -mt-4 transition group-hover:scale-110"></div>
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider relative z-10">Confirmed Bookings</p>
-                        <h3 class="text-3xl font-bold text-slate-900 mt-2 relative z-10" id="stat-today">0</h3>
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider relative z-10">Confirmed Orders</p>
+                        <h3 class="text-3xl font-bold text-slate-900 mt-2 relative z-10" id="stat-orders">0</h3>
                         <p class="text-xs text-slate-400 mt-2 relative z-10">Paid & Verified</p>
                     </div>
                 </div>
 
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-lg font-bold text-slate-800">Revenue Analytics</h3>
-                        <div class="px-3 py-1 bg-gray-50 rounded-lg text-xs font-bold text-slate-500">Hourly Breakdown</div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="font-bold text-slate-800 text-lg">Revenue Trends</h2>
+                            <span class="bg-teal-50 text-teal-700 text-xs font-bold px-2 py-1 rounded-lg border border-teal-100">
+                                Real-time
+                            </span>
+                        </div>
+                        <div class="relative flex-1 w-full min-h-[300px]">
+                            <canvas id="revenueChart"></canvas>
+                        </div>
                     </div>
-                    <div class="h-64 w-full">
-                        <canvas id="revenueChart"></canvas>
+
+                    <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col h-[400px] lg:h-auto">
+                        <h2 class="font-bold text-slate-800 text-lg mb-4">🔥 Most Ordered</h2>
+                        
+                        <div id="popular-items-list" class="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                            <div class="animate-pulse space-y-3">
+                                <div class="flex justify-between">
+                                    <div class="h-4 bg-slate-100 rounded w-2/3"></div>
+                                    <div class="h-4 bg-slate-100 rounded w-1/4"></div>
+                                </div>
+                                <div class="h-10 bg-slate-50 rounded-xl w-full"></div>
+                                <div class="h-10 bg-slate-50 rounded-xl w-full"></div>
+                                <div class="h-10 bg-slate-50 rounded-xl w-full"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div class="p-5 border-b border-gray-100 flex justify-between items-center">
-                        <h3 class="text-lg font-bold text-slate-800">Confirmed Orders</h3>
-                        </div>
+                        <h3 class="text-lg font-bold text-slate-800">Confirmed Orders Log</h3>
+                    </div>
 
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
@@ -202,7 +217,7 @@
                                 </tr>
                             </thead>
                             <tbody id="bookings-list" class="divide-y divide-gray-100 text-sm">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
                     
@@ -210,7 +225,7 @@
                         <div class="bg-gray-50 p-4 rounded-full mb-3">
                             <i data-lucide="check-circle" class="w-8 h-8 text-slate-300"></i>
                         </div>
-                        <p class="text-slate-500 font-medium">No confirmed bookings found for this date.</p>
+                        <p class="text-slate-500 font-medium">No confirmed bookings found for this period.</p>
                     </div>
                 </div>
 

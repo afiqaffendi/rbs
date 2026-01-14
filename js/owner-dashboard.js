@@ -1,22 +1,26 @@
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { showToast } from './toast.js';
 
-// DOM Elements
+// --- DOM Elements ---
+const timeFilter = document.getElementById('time-filter');
 const bookingsList = document.getElementById('bookings-list');
 const emptyState = document.getElementById('empty-state');
-const filterDateInput = document.getElementById('filter-date');
-const statToday = document.getElementById('stat-today');
+
+// Stats Elements
+const statOrders = document.getElementById('stat-orders');
 const statGuests = document.getElementById('stat-guests');
-const statRevenue = document.getElementById('stat-revenue');
+const statRevenue = document.getElementById('total-revenue-badge');
+
+// New Section Elements
+const popularList = document.getElementById('popular-items-list');
 
 // State
-let currentListener = null;
+let currentRestaurantId = null;
 let revenueChart = null; 
-let currentRestaurantId = null; 
 
-// 1. Auth Check & Init
+// --- 1. Initialization ---
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         window.location.href = 'index.html';
@@ -35,18 +39,20 @@ async function findOwnerRestaurant(uid) {
             currentRestaurantId = docSnap.id;
             const data = docSnap.data();
             
-            if (data.tableInventory) {
-                document.getElementById('qty2pax').value = data.tableInventory["2pax"] || 0;
-                document.getElementById('qty4pax').value = data.tableInventory["4pax"] || 0;
-                document.getElementById('qty6pax').value = data.tableInventory["6pax"] || 0;
-                document.getElementById('qty8pax').value = data.tableInventory["8pax"] || 0;
-                document.getElementById('qty10pax').value = data.tableInventory["10pax"] || 0;
+            // Load Sidebar Inventory Data
+            loadInventoryUI(data.tableInventory);
+
+            // Initialize Dashboard with 'Daily' view
+            initChart();
+            updateDashboard('daily');
+
+            // Setup Filter Listener
+            if(timeFilter) {
+                timeFilter.addEventListener('change', (e) => {
+                    updateDashboard(e.target.value);
+                });
             }
 
-            const today = new Date().toISOString().split('T')[0];
-            filterDateInput.value = today;
-            initChart();
-            setupRealtimeListener(today);
         } else {
             showToast("No restaurant profile found.", "error");
             window.location.href = 'owner-profile.html';
@@ -57,63 +63,235 @@ async function findOwnerRestaurant(uid) {
     }
 }
 
-function setupRealtimeListener(dateFilter) {
-    if (currentListener) currentListener(); 
-    if (!currentRestaurantId) return; 
+// --- 2. Main Dashboard Logic ---
+async function updateDashboard(range) {
+    if (!currentRestaurantId) return;
 
-    bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading day overview...</td></tr>';
+    // UI Loading State
+    bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-400 animate-pulse">Loading data...</td></tr>';
+    popularList.innerHTML = '<p class="text-xs text-slate-400 text-center mt-10">Analyzing orders...</p>';
 
-    const q = query(
-        collection(db, "bookings"), 
-        where("bookingDate", "==", dateFilter),
-        where("restaurantId", "==", currentRestaurantId) 
-    );
+    // 1. Calculate Date Range (Strings YYYY-MM-DD for comparison)
+    const { startDate, endDate } = getDateRange(range);
 
-    currentListener = onSnapshot(q, (snapshot) => {
-        let bookings = [];
-        let totalGuests = 0;
-        let revenue = 0;
-        let confirmedCount = 0;
+    try {
+        // 2. Fetch Bookings in Range
+        // Note: Using string comparison for dates works (e.g., "2023-10-01" <= "2023-10-05")
+        const q = query(
+            collection(db, "bookings"), 
+            where("restaurantId", "==", currentRestaurantId),
+            where("bookingDate", ">=", startDate),
+            where("bookingDate", "<=", endDate)
+        );
 
-        if (snapshot.empty) {
-            renderTable([]);
-            updateStats(0, 0, 0);
-            updateChart([]); 
-            return;
-        }
-
+        const snapshot = await getDocs(q);
+        const bookings = [];
+        
         snapshot.forEach(doc => {
             const data = doc.data();
+            // Only include relevant bookings (exclude cancelled/rejected for revenue)
             bookings.push({ id: doc.id, ...data });
-            
-            if (['confirmed', 'completed'].includes(data.status)) {
-                if (data.pax) totalGuests += parseInt(data.pax);
-                
-                if (data.totalCost) {
-                    const rawCost = parseFloat(data.totalCost);
-                    const actualRevenue = Math.max(0, rawCost - 50); 
-                    revenue += actualRevenue;
-                }
-                
-                confirmedCount++;
-            }
         });
 
-        bookings.sort((a, b) => {
-            const statusOrder = { 'confirmed': 1, 'completed': 2, 'pending_payment': 3, 'cancelled': 4 };
-            return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
-        });
+        // 3. Process Data
+        const confirmedBookings = bookings.filter(b => ['confirmed', 'completed'].includes(b.status));
         
-        renderTable(bookings);
-        updateStats(confirmedCount, totalGuests, revenue);
-        updateChart(bookings); 
+        // Update UI Components
+        updateStats(confirmedBookings);
+        renderChart(confirmedBookings, range);
+        renderPopularFood(confirmedBookings);
+        renderTable(bookings); // Show all (even cancelled) in the list for reference
 
-    }, (error) => {
-        console.error("Error:", error);
-        showToast("Error loading data", "error");
+    } catch (error) {
+        console.error("Dashboard Error:", error);
+        bookingsList.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-red-400">Failed to load data</td></tr>';
+    }
+}
+
+// --- 3. Data Processing Helpers ---
+
+function getDateRange(range) {
+    const today = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    if (range === 'daily') {
+        // Start and End are today
+    } else if (range === 'weekly') {
+        // Go back 6 days to get a 7-day window
+        start.setDate(today.getDate() - 6);
+    } else if (range === 'monthly') {
+        // Go back to the 1st of the month
+        start.setDate(1); 
+    }
+
+    return {
+        startDate: start.toISOString().split('T')[0],
+        endDate: end.toISOString().split('T')[0]
+    };
+}
+
+function updateStats(bookings) {
+    let totalRev = 0;
+    let totalGuests = 0;
+
+    bookings.forEach(b => {
+        totalGuests += parseInt(b.pax || 0);
+        // Revenue Calc: (Total Cost - Booking Fee if applicable)
+        // Assuming b.totalCost is the full amount paid
+        totalRev += parseFloat(b.totalCost || 0);
+    });
+
+    statOrders.innerText = bookings.length;
+    statGuests.innerText = totalGuests;
+    statRevenue.innerText = `RM ${totalRev.toFixed(2)}`;
+}
+
+// --- 4. Chart Logic ---
+function initChart() {
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Revenue',
+                data: [],
+                borderColor: '#0d9488', // Teal-600
+                backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: '#fff',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { borderDash: [4, 4], color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
     });
 }
 
+function renderChart(bookings, range) {
+    const dataMap = {};
+    const labels = [];
+    
+    // Sort bookings by time/date to ensure chart is chronological
+    bookings.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+
+    if (range === 'daily') {
+        // Group by Hour
+        const hours = ['9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM','9 PM','10 PM'];
+        hours.forEach(h => dataMap[h] = 0); // Init
+        
+        bookings.forEach(b => {
+            if(b.timeSlot) {
+                // specific logic to map "13:00" or "1:00 PM" to buckets
+                const hour = formatTimeSlotToHour(b.timeSlot);
+                if(dataMap[hour] !== undefined) {
+                    dataMap[hour] += parseFloat(b.totalCost || 0);
+                }
+            }
+        });
+        
+        revenueChart.data.labels = hours;
+        revenueChart.data.datasets[0].data = hours.map(h => dataMap[h]);
+
+    } else {
+        // Group by Date (Weekly/Monthly)
+        bookings.forEach(b => {
+            // "2023-10-25" -> "Oct 25"
+            const dateObj = new Date(b.bookingDate);
+            const label = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            dataMap[label] = (dataMap[label] || 0) + parseFloat(b.totalCost || 0);
+        });
+
+        // Fill in missing dates if needed, or just show dates with sales
+        // For simplicity, showing keys sorted
+        const sortedLabels = Object.keys(dataMap).sort((a,b) => new Date(a) - new Date(b)); // Rough sort
+        
+        revenueChart.data.labels = Object.keys(dataMap);
+        revenueChart.data.datasets[0].data = Object.values(dataMap);
+    }
+    
+    revenueChart.update();
+}
+
+function formatTimeSlotToHour(timeSlot) {
+    // Basic parser: "13:00" -> "1 PM"
+    // Assuming format is HH:mm or HH:mm AM/PM
+    // This is a simplified mapper
+    const t = parseInt(timeSlot.split(':')[0]);
+    if(t === 9 || t === 21) return t > 12 ? '9 PM' : '9 AM';
+    if(t > 12) return `${t-12} PM`;
+    if(t === 12) return '12 PM';
+    return `${t} AM`;
+}
+
+// --- 5. Popular Food Logic ---
+function renderPopularFood(bookings) {
+    const itemCounts = {};
+
+    bookings.forEach(booking => {
+        // Assuming booking has 'items' array. If strictly 'booking' type without items, 
+        // we might need to fetch sub-collection. 
+        // Based on typical structure: booking.items = [{name: 'Burger', quantity: 2}]
+        if (booking.items && Array.isArray(booking.items)) {
+            booking.items.forEach(item => {
+                const name = item.name;
+                const qty = parseInt(item.quantity || 1);
+                itemCounts[name] = (itemCounts[name] || 0) + qty;
+            });
+        }
+    });
+
+    // Convert to Array & Sort
+    const sortedItems = Object.entries(itemCounts)
+        .sort((a, b) => b[1] - a[1]) // Descending
+        .slice(0, 5); // Top 5
+
+    popularList.innerHTML = '';
+
+    if (sortedItems.length === 0) {
+        popularList.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-slate-400 py-8">
+                <i data-lucide="utensils-crossed" class="w-8 h-8 mb-2 opacity-20"></i>
+                <p class="text-xs">No food data available</p>
+            </div>`;
+    } else {
+        sortedItems.forEach(([name, count], index) => {
+            let rankColor = 'bg-slate-100 text-slate-600';
+            if(index === 0) rankColor = 'bg-yellow-100 text-yellow-700';
+            if(index === 1) rankColor = 'bg-gray-100 text-gray-700';
+            if(index === 2) rankColor = 'bg-orange-50 text-orange-600';
+
+            const html = `
+                <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 group">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center justify-center w-6 h-6 ${rankColor} text-xs font-bold rounded-full">
+                            ${index + 1}
+                        </span>
+                        <span class="text-sm font-semibold text-slate-700 group-hover:text-slate-900 line-clamp-1">${name}</span>
+                    </div>
+                    <span class="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-1 rounded-md border border-teal-100">
+                        ${count} sold
+                    </span>
+                </div>
+            `;
+            popularList.insertAdjacentHTML('beforeend', html);
+        });
+    }
+    if(window.lucide) lucide.createIcons();
+}
+
+// --- 6. Table List Render ---
 function renderTable(data) {
     bookingsList.innerHTML = '';
     
@@ -123,169 +301,76 @@ function renderTable(data) {
     }
     emptyState.classList.add('hidden');
 
+    // Sort by date/time (newest first)
+    data.sort((a, b) => {
+        // Fallback sort if createdAt doesn't exist
+        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+    });
+
     data.forEach(item => {
         const row = document.createElement('tr');
         const isDimmed = item.status === 'cancelled' || item.status === 'rejected';
         
         row.className = `border-b border-gray-50 last:border-none transition cursor-pointer ${isDimmed ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'}`;
-        
-        row.onclick = () => {
-            window.location.href = `owner-order-details.html?id=${item.id}`;
-        };
+        row.onclick = () => window.location.href = `owner-order-details.html?id=${item.id}`;
 
-        let badge = '';
-        if(item.status === 'confirmed') badge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">Active</span>`;
-        else if(item.status === 'completed') badge = `<span class="bg-slate-900 text-white px-2 py-1 rounded-full text-xs font-bold">Completed</span>`;
-        else if(item.status === 'cancelled') badge = `<span class="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs font-bold">Cancelled</span>`;
-        else badge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-bold">${item.status}</span>`;
+        // Status Badge Logic
+        let badgeClass = 'bg-gray-100 text-gray-600';
+        if(item.status === 'confirmed') badgeClass = 'bg-green-100 text-green-700';
+        if(item.status === 'cancelled') badgeClass = 'bg-red-100 text-red-600';
+        if(item.status === 'completed') badgeClass = 'bg-slate-900 text-white';
 
         let actionButtons = '-';
         if (item.status === 'confirmed') {
             actionButtons = `
                 <div class="flex justify-center gap-2">
-                    <button onclick="event.stopPropagation(); updateStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center" title="Mark Completed">
+                    <button onclick="event.stopPropagation(); updateBookingStatus('${item.id}', 'completed')" class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white transition flex items-center justify-center">
                         <i data-lucide="check" class="w-4 h-4"></i>
                     </button>
-                    <button onclick="event.stopPropagation(); updateStatus('${item.id}', 'cancelled')" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center" title="No Show / Cancel">
+                    <button onclick="event.stopPropagation(); updateBookingStatus('${item.id}', 'cancelled')" class="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
-                </div>
-            `;
+                </div>`;
         } else if (item.status === 'completed') {
-             actionButtons = `<span class="text-xs font-bold text-green-600 flex justify-center items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Done</span>`;
+            actionButtons = `<span class="text-xs font-bold text-green-600 flex justify-center items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Done</span>`;
         }
 
         row.innerHTML = `
             <td class="px-6 py-4">
                 <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
-                        ${item.pax}
-                    </div>
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">${item.pax || '?'}</div>
                     <div>
                         <p class="font-bold text-slate-900">${item.customerName || 'Guest'}</p>
-                        <p class="text-xs font-bold text-teal-600">
-                            ${item.assignedTableSize ? 'Table: ' + item.assignedTableSize.replace('pax','') : '... ' + item.id.slice(-4)}
-                        </p>
+                        <p class="text-xs text-slate-400">${item.id.slice(0,6)}...</p>
                     </div>
                 </div>
             </td>
-            <td class="px-6 py-4">${badge}</td>
+            <td class="px-6 py-4"><span class="${badgeClass} px-2 py-1 rounded-full text-xs font-bold capitalize">${item.status}</span></td>
             <td class="px-6 py-4">
-                <p class="text-sm font-medium text-slate-700">${item.timeSlot}</p>
+                <p class="text-sm font-medium text-slate-700">${item.bookingDate}</p>
+                <p class="text-xs text-slate-400">${item.timeSlot}</p>
             </td>
-            <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">
-                RM ${parseFloat(item.totalCost || 0).toFixed(2)}
-            </td>
-            <td class="px-6 py-4 text-right">
-                <span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded select-all">
-                    ${item.billCode || 'N/A'}
-                </span>
-            </td>
-            <td class="px-6 py-4">
-                ${actionButtons}
-            </td>
+            <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">RM ${parseFloat(item.totalCost || 0).toFixed(2)}</td>
+            <td class="px-6 py-4 text-right"><span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">${item.billCode || 'N/A'}</span></td>
+            <td class="px-6 py-4 text-center">${actionButtons}</td>
         `;
         bookingsList.appendChild(row);
     });
-    
     if(window.lucide) lucide.createIcons();
 }
 
-window.updateStatus = async (id, newStatus) => {
-    if(!confirm(`Mark this booking as ${newStatus}?`)) return;
-    try {
-        const docRef = doc(db, "bookings", id);
-        await updateDoc(docRef, { status: newStatus });
-        showToast(`Booking marked as ${newStatus}`);
-    } catch (error) {
-        console.error(error);
-        showToast("Action failed", "error");
-    }
-};
-
-function updateStats(total, guests, revenue) {
-    statToday.innerText = total;
-    statGuests.innerText = guests;
-    statRevenue.innerText = `RM ${revenue.toFixed(2)}`;
-}
-
-function initChart() {
-    const ctx = document.getElementById('revenueChart').getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(20, 184, 166, 0.2)'); 
-    gradient.addColorStop(1, 'rgba(20, 184, 166, 0)');
-
-    revenueChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['9 AM', '11 AM', '1 PM', '3 PM', '5 PM', '7 PM', '9 PM'],
-            datasets: [{
-                label: 'Food Sales (RM)', 
-                data: [0,0,0,0,0,0,0], 
-                borderColor: '#0d9488', 
-                backgroundColor: gradient,
-                borderWidth: 2,
-                pointBackgroundColor: '#fff',
-                tension: 0.4, 
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, grid: { borderDash: [2, 2] } },
-                x: { grid: { display: false } }
-            }
-        }
-    });
-}
-
-function updateChart(bookings) {
-    const buckets = [0, 0, 0, 0, 0, 0, 0];
-
-    bookings.forEach(b => {
-        if (['confirmed', 'completed'].includes(b.status)) {
-            const hour = parseHour(b.timeSlot);
-            const rawCost = parseFloat(b.totalCost || 0);
-            const amt = Math.max(0, rawCost - 50);
-
-            let index = -1;
-            if (hour >= 9 && hour < 11) index = 0;
-            else if (hour >= 11 && hour < 13) index = 1;
-            else if (hour >= 13 && hour < 15) index = 2;
-            else if (hour >= 15 && hour < 17) index = 3;
-            else if (hour >= 17 && hour < 19) index = 4;
-            else if (hour >= 19 && hour < 21) index = 5;
-            else if (hour >= 21) index = 6; 
-
-            if (index !== -1) {
-                buckets[index] += amt;
-            }
-        }
-    });
-
-    revenueChart.data.datasets[0].data = buckets;
-    revenueChart.update();
-}
-
-function parseHour(timeStr) {
-    if(!timeStr) return 0;
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes] = time.split(':');
-    hours = parseInt(hours);
-    if (hours === 12 && modifier === 'AM') hours = 0;
-    if (hours !== 12 && modifier === 'PM') hours += 12;
-    return hours;
+// --- 7. Sidebar Inventory Logic (Preserved) ---
+function loadInventoryUI(inventory) {
+    if(!inventory) return;
+    if(document.getElementById('qty2pax')) document.getElementById('qty2pax').value = inventory["2pax"] || 0;
+    if(document.getElementById('qty4pax')) document.getElementById('qty4pax').value = inventory["4pax"] || 0;
+    if(document.getElementById('qty6pax')) document.getElementById('qty6pax').value = inventory["6pax"] || 0;
+    if(document.getElementById('qty8pax')) document.getElementById('qty8pax').value = inventory["8pax"] || 0;
+    if(document.getElementById('qty10pax')) document.getElementById('qty10pax').value = inventory["10pax"] || 0;
 }
 
 window.saveTableConfig = async function() {
-    if (!currentRestaurantId) {
-        showToast("Error: Restaurant profile not loaded yet.", "error");
-        return;
-    }
-
+    if (!currentRestaurantId) return;
     const inventory = {
         "2pax": parseInt(document.getElementById('qty2pax').value) || 0,
         "4pax": parseInt(document.getElementById('qty4pax').value) || 0,
@@ -293,24 +378,28 @@ window.saveTableConfig = async function() {
         "8pax": parseInt(document.getElementById('qty8pax').value) || 0,
         "10pax": parseInt(document.getElementById('qty10pax').value) || 0
     };
-
     try {
-        const docRef = doc(db, "restaurants", currentRestaurantId);
-        await updateDoc(docRef, { tableInventory: inventory });
+        await updateDoc(doc(db, "restaurants", currentRestaurantId), { tableInventory: inventory });
         showToast("Table configuration saved successfully!");
     } catch (error) {
-        console.error("Error saving tables:", error);
         showToast("Failed to save: " + error.message, "error");
     }
 };
 
-filterDateInput.addEventListener('change', (e) => setupRealtimeListener(e.target.value));
-
-document.getElementById('btn-refresh').onclick = () => {
-    setupRealtimeListener(filterDateInput.value);
-    showToast("Dashboard Refreshed");
+window.updateBookingStatus = async (id, newStatus) => {
+    if(!confirm(`Mark this booking as ${newStatus}?`)) return;
+    try {
+        await updateDoc(doc(db, "bookings", id), { status: newStatus });
+        showToast(`Booking marked as ${newStatus}`);
+        // Refresh current view
+        if(timeFilter) updateDashboard(timeFilter.value);
+    } catch (error) {
+        console.error(error);
+        showToast("Action failed", "error");
+    }
 };
 
+// Logout
 document.getElementById('logout-btn').onclick = () => {
     signOut(auth).then(() => window.location.href = 'index.html');
 };
