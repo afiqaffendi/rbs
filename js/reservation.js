@@ -11,7 +11,7 @@ let selectedTime = null;
 let pax = 2; 
 let userUid = null;
 let cart = {}; 
-let baseDeposit = 50.00;
+let baseDeposit = 50.00; // Fixed Deposit
 let assignedTableSize = null; 
 let countdownInterval = null; 
 
@@ -27,7 +27,7 @@ const resAddrEl = document.getElementById('res-address');
 const resImageEl = document.getElementById('res-image');
 const totalCostDisplay = document.getElementById('total-cost-display');
 
-// Cart Summary Elements (NEW)
+// Cart Summary Elements
 const cartSummaryContainer = document.getElementById('cart-summary-container');
 const summaryBadge = document.getElementById('summary-badge');
 const summaryItemsText = document.getElementById('summary-items-text');
@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Restore state if returning from menu
     restoreSessionState();
+    
+    // Init total display to base deposit
+    if(totalCostDisplay) totalCostDisplay.innerText = baseDeposit.toFixed(2);
 });
 
 onAuthStateChanged(auth, async (user) => {
@@ -104,7 +107,7 @@ function restoreSessionState() {
     }
 }
 
-// CRITICAL: Expose to window for HTML button onclick
+// Expose to window
 window.goToMenuSelection = () => {
     saveSessionState();
     window.location.href = `menu-selection.html?id=${restaurantId}`;
@@ -129,10 +132,8 @@ async function loadRestaurantData(id) {
             if(selectedDate) renderTimeSlots();
             loadGallery(currentRestaurant.menuImages || []);
             
-            // Restore Time Selection Visuals
             if(selectedTime) {
                 setTimeout(() => {
-                    // Try to find and click the button to trigger availability check
                     const allBtns = Array.from(slotsContainer.children);
                     const btn = allBtns.find(b => b.innerText === selectedTime);
                     if(btn) btn.click(); 
@@ -182,7 +183,6 @@ async function checkAvailability(timeSlot) {
 
         const tableSizes = [2, 4, 6, 8, 10]; 
         let foundSize = null;
-        let remaining = 0;
 
         for (let size of tableSizes) {
             if (size >= pax) {
@@ -192,7 +192,6 @@ async function checkAvailability(timeSlot) {
 
                 if (totalUsed < totalOwned) {
                     foundSize = sizeKey;
-                    remaining = totalOwned - totalUsed;
                     break; 
                 }
             }
@@ -201,7 +200,7 @@ async function checkAvailability(timeSlot) {
         if (foundSize) {
             assignedTableSize = foundSize; 
             bookBtn.disabled = false;
-            bookBtn.innerText = "Confirm Reservation";
+            bookBtn.innerText = "Pay Deposit & Confirm";
             bookBtn.classList.add('bg-slate-900');
             bookBtn.classList.remove('bg-slate-300');
             showToast(`Table for ${foundSize.replace('pax','')} available!`, "success");
@@ -222,9 +221,13 @@ window.handleBooking = async () => {
     if(!assignedTableSize) { showToast("Please select an available time.", "error"); return; }
 
     const finalItems = Object.values(cart).filter(i => i.qty > 0);
+    
     let menuTotal = 0;
     finalItems.forEach(i => menuTotal += (i.qty * i.price));
-    const finalTotal = baseDeposit + menuTotal;
+    
+    // LOGIC CHANGE: 
+    // totalCost = Total Value of Food (Saved for records)
+    // deposit = Fixed RM 50 (This is what they pay now)
 
     if(bookBtn) {
         bookBtn.disabled = true;
@@ -240,8 +243,12 @@ window.handleBooking = async () => {
             timeSlot: selectedTime,
             pax: parseInt(pax),
             menuItems: finalItems,
-            totalCost: finalTotal,
-            deposit: baseDeposit,
+            
+            // --- UPDATED FINANCIAL FIELDS ---
+            estimatedFoodCost: menuTotal, // Just food
+            deposit: baseDeposit,         // Just 50
+            totalCost: menuTotal,         // Keeping totalCost as Food Value for Dashboard consistency
+            
             assignedTableSize: assignedTableSize, 
             status: "pending_payment", 
             createdAt: Timestamp.now()
@@ -249,6 +256,8 @@ window.handleBooking = async () => {
         
         const docRef = await addDoc(collection(db, "bookings"), bookingData);
         sessionStorage.removeItem('dtebs_booking_draft');
+        
+        // Redirect to payment. Payment logic will need to be updated to charge 'deposit'
         window.location.href = `payment.html?id=${docRef.id}`; 
 
     } catch (error) {
@@ -258,7 +267,7 @@ window.handleBooking = async () => {
     }
 };
 
-// --- 5. UI HELPERS ---
+// --- UI HELPERS ---
 
 function updateCartSummaryUI() {
     let totalQty = 0;
@@ -275,13 +284,15 @@ function updateCartSummaryUI() {
         cartSummaryContainer.classList.remove('hidden');
         summaryBadge.innerText = totalQty;
         summaryItemsText.innerText = `${totalQty} Item${totalQty > 1 ? 's' : ''} Selected`;
+        // Black box shows FOOD cost
         summaryTotalCost.innerText = `RM ${totalMenuCost.toFixed(2)}`;
     } else {
         cartSummaryContainer.classList.add('hidden');
     }
     
+    // Bottom bar ALWAYS shows Deposit (50)
     if(totalCostDisplay) {
-        totalCostDisplay.innerText = (baseDeposit + totalMenuCost).toFixed(2);
+        totalCostDisplay.innerText = baseDeposit.toFixed(2);
     }
 }
 
