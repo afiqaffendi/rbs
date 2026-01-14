@@ -103,14 +103,16 @@ function renderList(data) {
                     <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> ${item.address || 'Location N/A'}
                 </p>
                 
-                <p class="text-[10px] text-slate-400 font-medium bg-slate-50 inline-block px-2 py-1 rounded self-start mt-1 border border-slate-100">
-                    Operating Hours: ${item.operatingHours || '10:00 AM - 10:00 PM'}
-                </p>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <p class="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                        ${item.operatingHours || '10:00 AM - 10:00 PM'}
+                    </p>
 
-                <button onclick="event.stopPropagation(); openReviewsModal('${item.id}', '${item.name}')" 
-                    class="mt-3 w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 hover:text-slate-900 transition flex items-center justify-center gap-2">
-                    <i data-lucide="message-square" class="w-3 h-3"></i> See Customer Reviews
-                </button>
+                    <button onclick="event.stopPropagation(); openReviewsModal('${item.id}', '${item.name}')" 
+                        class="px-3 py-1 rounded-lg border border-slate-200 text-slate-500 font-bold text-[10px] hover:bg-slate-50 hover:text-slate-900 transition flex items-center gap-1.5 bg-white">
+                        <i data-lucide="message-square" class="w-3 h-3"></i> Reviews
+                    </button>
+                </div>
             </div>
         `;
         
@@ -173,7 +175,11 @@ window.openReviewsModal = async (id, name) => {
             `;
         });
         
-        reviewsModalContent.innerHTML = html;
+        reviewsModalContent.innerHTML = `
+            <div class="flex flex-col gap-3">
+                ${html}
+            </div>
+        `;
         if(window.lucide) lucide.createIcons();
 
     } catch (e) {
