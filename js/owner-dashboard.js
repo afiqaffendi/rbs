@@ -63,7 +63,7 @@ async function findOwnerRestaurant(uid) {
     }
 }
 
-// --- 2. Main Dashboard Logic (FIXED) ---
+// --- 2. Main Dashboard Logic ---
 async function updateDashboard(range) {
     if (!currentRestaurantId) return;
 
@@ -75,8 +75,7 @@ async function updateDashboard(range) {
     const { startDate, endDate } = getDateRange(range);
 
     try {
-        // --- FIX STARTS HERE ---
-        // We only query by Restaurant ID to avoid "Missing Index" errors in Firebase
+        // Query only by Restaurant ID
         const q = query(
             collection(db, "bookings"), 
             where("restaurantId", "==", currentRestaurantId)
@@ -87,13 +86,11 @@ async function updateDashboard(range) {
         
         snapshot.forEach(doc => {
             const data = doc.data();
-            // We filter by date manually here in JavaScript
-            // This is safer and doesn't require complex database configuration
+            // Client-side date filtering
             if (data.bookingDate >= startDate && data.bookingDate <= endDate) {
                 bookings.push({ id: doc.id, ...data });
             }
         });
-        // --- FIX ENDS HERE ---
 
         // 3. Process Data
         const confirmedBookings = bookings.filter(b => ['confirmed', 'completed'].includes(b.status));
@@ -120,15 +117,11 @@ function getDateRange(range) {
     if (range === 'daily') {
         // Start and End are today
     } else if (range === 'weekly') {
-        // Go back 6 days to get a 7-day window
         start.setDate(today.getDate() - 6);
     } else if (range === 'monthly') {
-        // Go back to the 1st of the month
         start.setDate(1); 
     }
 
-    // Return YYYY-MM-DD strings to match your database format
-    // Using local time to ensure "today" is accurate to the user
     const toLocalISO = (date) => {
         const offset = date.getTimezoneOffset() * 60000;
         return new Date(date - offset).toISOString().split('T')[0];
@@ -146,7 +139,8 @@ function updateStats(bookings) {
 
     bookings.forEach(b => {
         totalGuests += parseInt(b.pax || 0);
-        totalRev += parseFloat(b.totalCost || 0);
+        // Using 'totalCost' or 'deposit' depending on what's available
+        totalRev += parseFloat(b.totalCost || b.deposit || 0);
     });
 
     statOrders.innerText = bookings.length;
@@ -164,7 +158,7 @@ function initChart() {
             datasets: [{
                 label: 'Revenue',
                 data: [],
-                borderColor: '#0d9488', // Teal-600
+                borderColor: '#0d9488', 
                 backgroundColor: 'rgba(13, 148, 136, 0.1)',
                 borderWidth: 2,
                 tension: 0.3,
@@ -187,12 +181,9 @@ function initChart() {
 
 function renderChart(bookings, range) {
     const dataMap = {};
-    
-    // Sort bookings by time/date
     bookings.sort((a,b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
 
     if (range === 'daily') {
-        // Group by Hour
         const hours = ['9 AM','10 AM','11 AM','12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM','9 PM','10 PM'];
         hours.forEach(h => dataMap[h] = 0); 
         
@@ -204,39 +195,28 @@ function renderChart(bookings, range) {
                 }
             }
         });
-        
         revenueChart.data.labels = hours;
         revenueChart.data.datasets[0].data = hours.map(h => dataMap[h]);
-
     } else {
-        // Group by Date (Weekly/Monthly)
         bookings.forEach(b => {
             const dateObj = new Date(b.bookingDate);
             const label = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             dataMap[label] = (dataMap[label] || 0) + parseFloat(b.totalCost || 0);
         });
-
         revenueChart.data.labels = Object.keys(dataMap);
         revenueChart.data.datasets[0].data = Object.values(dataMap);
     }
-    
     revenueChart.update();
 }
 
 function formatTimeSlotToHour(timeSlot) {
-    // Robust parser that handles "13:00" AND "01:00 PM"
     if (!timeSlot) return "9 AM";
-    
-    // Check if it has AM/PM
     const is12Hour = timeSlot.includes('AM') || timeSlot.includes('PM');
-    
     if (is12Hour) {
-        // Extract hour: "02:00 PM" -> 02
         let [time, modifier] = timeSlot.split(' ');
         let [hour, min] = time.split(':');
         return `${parseInt(hour)} ${modifier}`;
     } else {
-        // 24 Hour format: "13:00" -> "1 PM"
         const t = parseInt(timeSlot.split(':')[0]);
         if(t === 9 || t === 21) return t > 12 ? '9 PM' : '9 AM';
         if(t > 12) return `${t-12} PM`;
@@ -245,16 +225,21 @@ function formatTimeSlotToHour(timeSlot) {
     }
 }
 
-// --- 5. Popular Food Logic ---
+// --- 5. Popular Food Logic (FIXED: Uses 'menuItems') ---
 function renderPopularFood(bookings) {
     const itemCounts = {};
+    let itemsFound = false;
 
     bookings.forEach(booking => {
-        if (booking.items && Array.isArray(booking.items)) {
-            booking.items.forEach(item => {
-                const name = item.name;
-                const qty = parseInt(item.quantity || 1);
+        // FIX: Changed from 'items' to 'menuItems' based on your other files
+        if (booking.menuItems && Array.isArray(booking.menuItems)) {
+            booking.menuItems.forEach(item => {
+                const name = item.name || 'Unknown Item';
+                // FIX: Added 'item.qty' check since your other files use 'qty'
+                const qty = parseInt(item.qty || item.quantity || 1);
+                
                 itemCounts[name] = (itemCounts[name] || 0) + qty;
+                itemsFound = true;
             });
         }
     });
@@ -265,11 +250,18 @@ function renderPopularFood(bookings) {
 
     popularList.innerHTML = '';
 
-    if (sortedItems.length === 0) {
+    if (!itemsFound && bookings.length > 0) {
         popularList.innerHTML = `
             <div class="flex flex-col items-center justify-center h-full text-slate-400 py-8">
+                <i data-lucide="coffee" class="w-8 h-8 mb-2 opacity-50"></i>
+                <p class="text-xs font-semibold">Orders found, but no menu items.</p>
+                <p class="text-[10px] opacity-70">These might be table-only reservations.</p>
+            </div>`;
+    } else if (sortedItems.length === 0) {
+         popularList.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-slate-400 py-8">
                 <i data-lucide="utensils-crossed" class="w-8 h-8 mb-2 opacity-20"></i>
-                <p class="text-xs">No food data available</p>
+                <p class="text-xs">No orders in this period</p>
             </div>`;
     } else {
         sortedItems.forEach(([name, count], index) => {
@@ -351,7 +343,7 @@ function renderTable(data) {
                 <p class="text-sm font-medium text-slate-700">${item.bookingDate}</p>
                 <p class="text-xs text-slate-400">${item.timeSlot}</p>
             </td>
-            <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">RM ${parseFloat(item.totalCost || 0).toFixed(2)}</td>
+            <td class="px-6 py-4 font-mono text-sm font-bold text-slate-700">RM ${parseFloat(item.totalCost || item.deposit || 0).toFixed(2)}</td>
             <td class="px-6 py-4 text-right"><span class="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">${item.billCode || 'N/A'}</span></td>
             <td class="px-6 py-4 text-center">${actionButtons}</td>
         `;
