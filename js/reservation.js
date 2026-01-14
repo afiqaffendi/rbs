@@ -46,7 +46,13 @@ const lightboxImg = document.getElementById('lightbox-img');
 
 // --- 1. INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    const today = new Date().toISOString().split('T')[0];
+    // Set Min Date to Today using Local Time (not UTC)
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+    
     if(dateInput) dateInput.setAttribute('min', today);
 
     restoreSessionState();
@@ -99,7 +105,13 @@ function restoreSessionState() {
         }
     } else {
         if(dateInput) {
-            const today = new Date().toISOString().split('T')[0];
+            // Default to today
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const today = `${year}-${month}-${day}`;
+            
             dateInput.value = today;
             selectedDate = today;
         }
@@ -133,9 +145,14 @@ async function loadRestaurantData(id) {
             if(selectedTime) {
                 setTimeout(() => {
                     const allBtns = Array.from(slotsContainer.children);
-                    const btn = allBtns.find(b => b.innerText === selectedTime);
+                    // Find the button (that isn't disabled)
+                    const btn = allBtns.find(b => b.innerText === selectedTime && !b.disabled);
                     if(btn) btn.click(); 
-                    else checkAvailability(selectedTime);
+                    else {
+                        // If selected time is now disabled (past), reset it
+                        selectedTime = null;
+                        updateSummary();
+                    }
                 }, 500);
             }
 
@@ -235,10 +252,10 @@ window.handleBooking = async () => {
             pax: parseInt(pax),
             menuItems: finalItems,
             
-            // --- UPDATED FINANCIALS ---
-            estimatedFoodCost: menuTotal, // Only Food
-            deposit: baseDeposit,         // Only RM 50
-            totalCost: baseDeposit + menuTotal, // Total Value (Food + Deposit)
+            // --- FINANCIALS ---
+            estimatedFoodCost: menuTotal,
+            deposit: baseDeposit,
+            totalCost: baseDeposit + menuTotal,
             
             assignedTableSize: assignedTableSize, 
             status: "pending_payment", 
@@ -280,7 +297,6 @@ function updateCartSummaryUI() {
         cartSummaryContainer.classList.add('hidden');
     }
     
-    // Bottom bar ALWAYS shows 50.00
     if(totalCostDisplay) {
         totalCostDisplay.innerText = baseDeposit.toFixed(2);
     }
@@ -318,6 +334,15 @@ function renderTimeSlots() {
     if(availabilityMsg) availabilityMsg.classList.add('hidden');
     if (!selectedDate || !currentRestaurant) return;
 
+    // --- TIME VALIDATION LOGIC ---
+    const now = new Date();
+    // Helper to format date YYYY-MM-DD
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = (selectedDate === todayStr);
+    
+    // Get current time in minutes (e.g. 10:30 = 630)
+    const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+
     const generateSlots = (hours) => {
         const parseTime = (t) => {
             t = t.trim().toUpperCase(); 
@@ -350,7 +375,12 @@ function renderTimeSlots() {
             let mm = displayStart%60;
             let amp = h>=12 ? 'PM' : 'AM';
             let displayH = h%12 || 12;
-            slots.push(`${displayH}:${mm.toString().padStart(2,'0')} ${amp}`);
+            
+            // Store both display string and raw minutes value
+            slots.push({
+                display: `${displayH}:${mm.toString().padStart(2,'0')} ${amp}`,
+                minutes: displayStart
+            });
             start += 60; 
         }
         return slots;
@@ -358,20 +388,46 @@ function renderTimeSlots() {
 
     const slots = generateSlots(currentRestaurant.operatingHours || "10:00 AM - 10:00 PM");
 
-    slots.forEach(time => {
+    slots.forEach(slot => {
         const btn = document.createElement('button');
-        const isSelected = (selectedTime === time);
-        btn.className = `py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ${isSelected ? 'bg-slate-900 text-white shadow-md ring-2 ring-teal-500' : 'bg-white text-slate-600 hover:border-teal-500'}`;
-        btn.innerText = time;
-        btn.onclick = () => {
-            const allBtns = slotsContainer.querySelectorAll('button');
-            allBtns.forEach(b => b.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-white text-slate-600 hover:border-teal-500');
-            btn.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-slate-900 text-white shadow-md ring-2 ring-teal-500';
-            
-            selectedTime = time;
-            updateEstimation(time); 
-            checkAvailability(time); 
-        };
+        const isSelected = (selectedTime === slot.display);
+        
+        // --- CHECK IF PAST ---
+        let isDisabled = false;
+        if (isToday && slot.minutes <= currentMinutes) {
+            isDisabled = true;
+        }
+
+        // Base Classes
+        let classes = "py-3 px-2 rounded-xl text-sm font-bold border transition-all relative ";
+        
+        if (isDisabled) {
+            classes += "bg-slate-100 text-slate-300 cursor-not-allowed border-transparent";
+            btn.disabled = true;
+            btn.title = "Time slot passed";
+        } else if (isSelected) {
+            classes += "bg-slate-900 text-white shadow-md ring-2 ring-teal-500 border-slate-900";
+        } else {
+            classes += "bg-white text-slate-600 hover:border-teal-500 border-slate-200";
+        }
+
+        btn.className = classes;
+        btn.innerText = slot.display;
+        
+        if (!isDisabled) {
+            btn.onclick = () => {
+                const allBtns = slotsContainer.querySelectorAll('button');
+                allBtns.forEach(b => {
+                    if(!b.disabled) b.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-white text-slate-600 hover:border-teal-500 border-slate-200';
+                });
+                btn.className = 'py-3 px-2 rounded-xl text-sm font-bold border transition-all bg-slate-900 text-white shadow-md ring-2 ring-teal-500 border-slate-900';
+                
+                selectedTime = slot.display;
+                updateEstimation(slot.display); 
+                checkAvailability(slot.display); 
+            };
+        }
+        
         slotsContainer.appendChild(btn);
     });
 }
